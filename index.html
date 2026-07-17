@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<title>Razão · Controle de Gastos</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#16302B" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --ink:#16302B;
+    --ink-2:#1E3F38;
+    --paper:#F6F1E6;
+    --paper-2:#EDE6D3;
+    --gold:#B78A2D;
+    --gold-2:#D9AE55;
+    --coral:#C6512A;
+    --line:#D8CFB4;
+    --text:#22281F;
+    --muted:#6B6455;
+    --good:#3E6B4F;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  #root{min-height:100vh;}
+  .app{max-width:520px;margin:0 auto;min-height:100vh;background:var(--paper);display:flex;flex-direction:column;box-shadow:0 0 60px rgba(0,0,0,0.35);}
+
+  .topbar{
+    background:linear-gradient(160deg,var(--ink) 0%, var(--ink-2) 100%);
+    color:var(--paper);
+    padding:22px 20px 26px;
+    position:relative;
+    overflow:hidden;
+  }
+  .topbar::after{
+    content:"";
+    position:absolute;right:-40px;top:-40px;width:160px;height:160px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(217,174,85,0.18), transparent 70%);
+  }
+  .brand{font-family:'Fraunces',serif;font-weight:600;font-size:15px;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold-2);opacity:0.9;}
+  .who{display:flex;gap:8px;margin-top:14px;}
+  .who button{
+    flex:1;padding:9px 8px;border-radius:8px;border:1px solid rgba(246,241,230,0.22);
+    background:rgba(246,241,230,0.06);color:var(--paper);font-family:'Inter';font-weight:600;font-size:13px;cursor:pointer;
+  }
+  .who button.active{background:var(--gold);border-color:var(--gold);color:var(--ink);}
+
+  .hero-num{font-family:'Fraunces',serif;font-weight:600;font-size:44px;line-height:1;margin-top:18px;letter-spacing:-0.01em;}
+  .hero-label{font-size:12.5px;color:rgba(246,241,230,0.6);margin-top:6px;letter-spacing:0.04em;}
+  .hero-split{display:flex;gap:18px;margin-top:16px;}
+  .hero-split div{font-family:'JetBrains Mono',monospace;font-size:13px;color:rgba(246,241,230,0.85);}
+  .hero-split span{display:block;font-size:10.5px;color:rgba(246,241,230,0.5);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;}
+
+  .tabs{display:flex;background:var(--paper-2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;}
+  .tabs button{
+    flex:1;padding:12px 4px;background:none;border:none;font-family:'Inter';font-weight:600;font-size:12px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;
+  }
+  .tabs button.active{color:var(--ink);border-bottom-color:var(--gold);}
+
+  .content{flex:1;padding:18px 20px 90px;}
+  .section-title{font-family:'Fraunces',serif;font-size:19px;font-weight:600;margin:4px 0 14px;color:var(--ink);}
+
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.03em;}
+  .field input, .field select, .field textarea{
+    width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:8px;font-family:'Inter';font-size:14.5px;background:var(--paper);color:var(--text);
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{outline:none;border-color:var(--gold);}
+  .row2{display:flex;gap:10px;}
+  .row2 .field{flex:1;}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:11px 16px;border-radius:8px;border:none;font-family:'Inter';font-weight:600;font-size:14px;cursor:pointer;width:100%;
+  }
+  .btn-primary{background:var(--ink);color:var(--paper);}
+  .btn-primary:disabled{opacity:0.5;}
+  .btn-gold{background:var(--gold);color:#fff;}
+  .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);}
+  .btn-sm{width:auto;padding:7px 12px;font-size:12.5px;}
+
+  .ledger{border-top:1px dashed var(--line);}
+  .ledger-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px 2px;border-bottom:1px dashed var(--line);gap:10px;
+  }
+  .ledger-desc{font-weight:600;font-size:14.5px;color:var(--text);}
+  .ledger-meta{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .ledger-amt{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:15px;white-space:nowrap;color:var(--coral);}
+  .tag{
+    display:inline-block;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--paper-2);color:var(--ink-2);margin-right:6px;
+  }
+  .empty{text-align:center;padding:40px 10px;color:var(--muted);font-size:14px;}
+  .empty .big{font-size:32px;display:block;margin-bottom:8px;}
+
+  .cat-bar-wrap{margin-bottom:10px;}
+  .cat-bar-top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;}
+  .cat-bar-top b{font-family:'JetBrains Mono',monospace;}
+  .cat-bar-track{background:var(--paper-2);height:7px;border-radius:5px;overflow:hidden;}
+  .cat-bar-fill{height:100%;background:var(--gold);border-radius:5px;}
+
+  .dropzone{
+    border:2px dashed var(--line);border-radius:12px;padding:30px 16px;text-align:center;color:var(--muted);cursor:pointer;background:var(--paper);
+  }
+  .dropzone.drag{border-color:var(--gold);background:#fff;}
+  .dropzone input{display:none;}
+
+  .rev-row{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--paper);}
+  .rev-row .r1{display:flex;justify-content:space-between;font-weight:600;font-size:14px;}
+  .rev-row select{margin-top:6px;width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--line);font-size:13px;}
+
+  .toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);
+    padding:10px 18px;border-radius:30px;font-size:13.5px;font-weight:600;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,0.3);
+  }
+  .spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .center{display:flex;align-items:center;justify-content:center;}
+  .muted{color:var(--muted);font-size:13px;}
+  .link{color:var(--gold);font-weight:600;cursor:pointer;font-size:13px;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const {useState,useEffect,useRef,useMemo} = React;
+
+const CATEGORIES = ["Mercado","Restaurante","Transporte","Casa","Contas Fixas","Saúde","Lazer","Compras","Educação","Pets","Viagem","Outros"];
+
+function loadCfg(){
+  try{ return JSON.parse(localStorage.getItem('gastos_cfg')||'{}'); }catch(e){ return {}; }
+}
+function saveCfg(c){ localStorage.setItem('gastos_cfg', JSON.stringify(c)); }
+
+function getClient(cfg){
+  if(!cfg.url || !cfg.key) return null;
+  return supabase.createClient(cfg.url, cfg.key);
+}
+
+async function callClaude(payload){
+  // Chama nossa função serverless (/api/claude), que guarda a chave da Anthropic
+  // em segredo no servidor e repassa a chamada pra API real.
+  const res = await fetch("/api/claude", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if(!res.ok){ throw new Error(data.error || 'Erro ao chamar a IA'); }
+  const textBlocks = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+  return textBlocks;
+}
+
+function extractJson(text){
+  let t = text.trim().replace(/```json/g,'').replace(/```/g,'').trim();
+  const start = t.indexOf('[') === -1 ? t.indexOf('{') : t.indexOf('[');
+  const endChar = t.trimEnd().endsWith(']') ? ']' : '}';
+  const end = t.lastIndexOf(endChar);
+  if(start>=0 && end>=0) t = t.slice(start, end+1);
+  return JSON.parse(t);
+}
+
+function fmtBRL(n){
+  return (n<0?'-':'') + 'R$ ' + Math.abs(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+}
+
+function App(){
+  const [cfg,setCfg] = useState(loadCfg());
+  const [user,setUser] = useState(localStorage.getItem('gastos_user')||'Vinicius');
+  const [tab,setTab] = useState('dash');
+  const [expenses,setExpenses] = useState([]);
+  const [loading,setLoading] = useState(false);
+  const [toast,setToast] = useState(null);
+  const client = useMemo(()=>getClient(cfg),[cfg.url,cfg.key]);
+
+  function showToast(msg){ setToast(msg); setTimeout(()=>setToast(null),2600); }
+
+  async function loadExpenses(){
+    if(!client) return;
+    setLoading(true);
+    const {data,error} = await client.from('expenses').select('*').order('date',{ascending:false}).limit(500);
+    setLoading(false);
+    if(error){ showToast('Erro ao carregar: '+error.message); return; }
+    setExpenses(data||[]);
+  }
+
+  useEffect(()=>{ if(client) loadExpenses(); },[client]);
+
+  function switchUser(u){ setUser(u); localStorage.setItem('gastos_user',u); }
+
+  const thisMonthKey = new Date().toISOString().slice(0,7);
+  const monthExpenses = expenses.filter(e=> (e.date||'').slice(0,7)===thisMonthKey);
+  const monthTotal = monthExpenses.reduce((s,e)=>s+Number(e.amount),0);
+  const byUser = {};
+  monthExpenses.forEach(e=>{ byUser[e.added_by] = (byUser[e.added_by]||0)+Number(e.amount); });
+  const byCat = {};
+  monthExpenses.forEach(e=>{ byCat[e.category||'Outros'] = (byCat[e.category||'Outros']||0)+Number(e.amount); });
+  const catList = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  const maxCat = catList.length ? catList[0][1] : 1;
+
+  if(!client){
+    return <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} />;
+  }
+
+  return (
+    <div className="app">
+      <div className="topbar">
+        <div className="brand">Razão · Gastos da Casa</div>
+        <div className="who">
+          <button className={user==='Vinicius'?'active':''} onClick={()=>switchUser('Vinicius')}>Vinicius</button>
+          <button className={user==='Aline'?'active':''} onClick={()=>switchUser('Aline')}>Aline</button>
+        </div>
+        <div className="hero-num">{fmtBRL(monthTotal)}</div>
+        <div className="hero-label">gasto total em {new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div>
+        <div className="hero-split">
+          <div><span>Vinicius</span>{fmtBRL(byUser['Vinicius']||0)}</div>
+          <div><span>Aline</span>{fmtBRL(byUser['Aline']||0)}</div>
+        </div>
+      </div>
+
+      <div className="tabs">
+        <button className={tab==='dash'?'active':''} onClick={()=>setTab('dash')}>Resumo</button>
+        <button className={tab==='list'?'active':''} onClick={()=>setTab('list')}>Lançamentos</button>
+        <button className={tab==='add'?'active':''} onClick={()=>setTab('add')}>+ Gasto</button>
+        <button className={tab==='pdf'?'active':''} onClick={()=>setTab('pdf')}>Importar</button>
+        <button className={tab==='cfg'?'active':''} onClick={()=>setTab('cfg')}>Config</button>
+      </div>
+
+      <div className="content">
+        {tab==='dash' && <Dashboard catList={catList} maxCat={maxCat} monthTotal={monthTotal} />}
+        {tab==='list' && <ListTab expenses={expenses} loading={loading} client={client} reload={loadExpenses} showToast={showToast} />}
+        {tab==='add' && <AddTab client={client} user={user} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
+        {tab==='pdf' && <PdfTab client={client} user={user} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
+        {tab==='cfg' && <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} embedded />}
+      </div>
+
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+function Dashboard({catList,maxCat,monthTotal}){
+  return (
+    <div>
+      <div className="section-title">Por categoria</div>
+      <div className="card">
+        {catList.length===0 && <div className="empty"><span className="big">🗒️</span>Nenhum gasto este mês ainda.</div>}
+        {catList.map(([cat,val])=>(
+          <div className="cat-bar-wrap" key={cat}>
+            <div className="cat-bar-top"><span>{cat}</span><b>{fmtBRL(val)}</b></div>
+            <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(val/maxCat*100)+'%'}}></div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ListTab({expenses,loading,client,reload,showToast}){
+  async function del(id){
+    const {error} = await client.from('expenses').delete().eq('id',id);
+    if(error){ showToast('Erro ao apagar'); return; }
+    reload();
+  }
+  return (
+    <div>
+      <div className="section-title">Lançamentos</div>
+      {loading && <div className="empty">Carregando…</div>}
+      {!loading && expenses.length===0 && <div className="empty"><span className="big">📭</span>Nada lançado ainda.</div>}
+      <div className="card ledger">
+        {expenses.map(e=>(
+          <div className="ledger-row" key={e.id}>
+            <div>
+              <div className="ledger-desc">{e.description}</div>
+              <div className="ledger-meta">
+                <span className="tag">{e.category||'Outros'}</span>
+                {new Date(e.date).toLocaleDateString('pt-BR')} · {e.added_by}
+              </div>
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div className="ledger-amt">{fmtBRL(Number(e.amount))}</div>
+              <span className="link" onClick={()=>del(e.id)}>apagar</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AddTab({client,user,reload,showToast,setTab}){
+  const [desc,setDesc] = useState('');
+  const [amount,setAmount] = useState('');
+  const [category,setCategory] = useState('');
+  const [date,setDate] = useState(new Date().toISOString().slice(0,10));
+  const [suggesting,setSuggesting] = useState(false);
+  const [saving,setSaving] = useState(false);
+
+  async function suggestCategory(){
+    if(!desc.trim()) return;
+    setSuggesting(true);
+    try{
+      const text = await callClaude({
+        model:"claude-sonnet-4-6", max_tokens:1000,
+        messages:[{role:"user",content:`Categorize esta despesa em UMA destas categorias exatas: ${CATEGORIES.join(', ')}.\nDescrição: "${desc}"\nResponda APENAS com o nome exato da categoria, nada mais.`}]
+      });
+      const cat = text.trim();
+      const match = CATEGORIES.find(c=>c.toLowerCase()===cat.toLowerCase());
+      setCategory(match || 'Outros');
+    }catch(e){ showToast('Erro ao sugerir categoria'); }
+    setSuggesting(false);
+  }
+
+  async function save(){
+    if(!desc.trim() || !amount){ showToast('Preencha descrição e valor'); return; }
+    setSaving(true);
+    const {error} = await client.from('expenses').insert({
+      description: desc.trim(), amount: parseFloat(amount.replace(',','.')),
+      category: category || 'Outros', date, added_by: user, source:'manual'
+    });
+    setSaving(false);
+    if(error){ showToast('Erro: '+error.message); return; }
+    showToast('Gasto salvo ✓');
+    setDesc(''); setAmount(''); setCategory('');
+    reload(); setTab('list');
+  }
+
+  return (
+    <div>
+      <div className="section-title">Novo gasto</div>
+      <div className="card">
+        <div className="field">
+          <label>Descrição</label>
+          <input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Ex: Supermercado Kroger" />
+        </div>
+        <div className="row2">
+          <div className="field">
+            <label>Valor (R$)</label>
+            <input value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0,00" inputMode="decimal" />
+          </div>
+          <div className="field">
+            <label>Data</label>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} />
+          </div>
+        </div>
+        <div className="field">
+          <label>Categoria</label>
+          <div className="row2" style={{alignItems:'flex-end'}}>
+            <select value={category} onChange={e=>setCategory(e.target.value)}>
+              <option value="">Selecione…</option>
+              {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+            <button className="btn btn-ghost btn-sm" style={{flex:'0 0 auto'}} onClick={suggestCategory} disabled={suggesting}>
+              {suggesting ? <span className="spinner"></span> : '✨ Sugerir'}
+            </button>
+          </div>
+        </div>
+        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'Salvando…':'Salvar gasto'}</button>
+      </div>
+    </div>
+  );
+}
+
+function PdfTab({client,user,reload,showToast,setTab}){
+  const [file,setFile] = useState(null);
+  const [drag,setDrag] = useState(false);
+  const [extracting,setExtracting] = useState(false);
+  const [reviewing,setReviewing] = useState(null);
+  const inputRef = useRef();
+
+  function handleFile(f){
+    if(!f || f.type!=='application/pdf'){ showToast('Envie um PDF'); return; }
+    setFile(f);
+  }
+
+  async function extract(){
+    if(!file) return;
+    setExtracting(true);
+    try{
+      const base64 = await new Promise((res,rej)=>{
+        const r = new FileReader();
+        r.onload=()=>res(r.result.split(',')[1]);
+        r.onerror=rej;
+        r.readAsDataURL(file);
+      });
+      const prompt = `Extraia todas as transações desta fatura/statement em JSON. Retorne APENAS um array JSON, sem texto antes ou depois, no formato:
+[{"date":"YYYY-MM-DD","description":"texto original curto","amount":12.34,"category":"UMA de: ${CATEGORIES.join(', ')}"}]
+Regras: valores sempre positivos (gastos), ignore pagamentos/estornos de fatura, ignore linhas que não são transações, use a melhor estimativa de categoria.`;
+      const text = await callClaude({
+        model:"claude-sonnet-4-6", max_tokens:4000,
+        messages:[{role:"user",content:[
+          {type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},
+          {type:"text",text:prompt}
+        ]}]
+      });
+      const items = extractJson(text);
+      setReviewing(items.map(it=>({...it, include:true})));
+    }catch(e){
+      showToast('Não consegui ler o PDF: '+e.message);
+    }
+    setExtracting(false);
+  }
+
+  async function confirmSave(){
+    const toSave = reviewing.filter(r=>r.include).map(r=>({
+      description:r.description, amount:Number(r.amount), category:r.category||'Outros',
+      date:r.date, added_by:user, source:'pdf'
+    }));
+    if(toSave.length===0){ showToast('Nada selecionado'); return; }
+    const {error} = await client.from('expenses').insert(toSave);
+    if(error){ showToast('Erro: '+error.message); return; }
+    showToast(toSave.length+' lançamentos importados ✓');
+    setReviewing(null); setFile(null);
+    reload(); setTab('list');
+  }
+
+  if(reviewing){
+    return (
+      <div>
+        <div className="section-title">Revisar {reviewing.length} lançamentos</div>
+        <p className="muted" style={{marginBottom:12}}>Desmarque o que não quiser importar e ajuste a categoria se precisar.</p>
+        {reviewing.map((r,i)=>(
+          <div className="rev-row" key={i}>
+            <div className="r1">
+              <label style={{display:'flex',gap:8,alignItems:'center'}}>
+                <input type="checkbox" checked={r.include} onChange={e=>{
+                  const cp=[...reviewing]; cp[i]={...cp[i],include:e.target.checked}; setReviewing(cp);
+                }} />
+                {r.description}
+              </label>
+              <span style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(Number(r.amount))}</span>
+            </div>
+            <div className="muted" style={{marginTop:4}}>{new Date(r.date).toLocaleDateString('pt-BR')}</div>
+            <select value={r.category} onChange={e=>{
+              const cp=[...reviewing]; cp[i]={...cp[i],category:e.target.value}; setReviewing(cp);
+            }}>
+              {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        ))}
+        <button className="btn btn-primary" onClick={confirmSave} style={{marginTop:8}}>Importar selecionados</button>
+        <button className="btn btn-ghost" style={{marginTop:8}} onClick={()=>setReviewing(null)}>Cancelar</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="section-title">Importar fatura (PDF)</div>
+      <div
+        className={"dropzone"+(drag?' drag':'')}
+        onClick={()=>inputRef.current.click()}
+        onDragOver={e=>{e.preventDefault();setDrag(true);}}
+        onDragLeave={()=>setDrag(false)}
+        onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0]);}}
+      >
+        <input ref={inputRef} type="file" accept="application/pdf" onChange={e=>handleFile(e.target.files[0])} />
+        {file ? <div><b>{file.name}</b></div> : <div>📄 Toque ou arraste o PDF da fatura aqui</div>}
+      </div>
+      {file && (
+        <button className="btn btn-gold" style={{marginTop:14}} onClick={extract} disabled={extracting}>
+          {extracting ? <span className="spinner"></span> : 'Extrair transações com IA'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ConfigScreen({cfg,onSave,embedded}){
+  const [url,setUrl] = useState(cfg.url||'');
+  const [key,setKey] = useState(cfg.key||'');
+  const [testing,setTesting] = useState(false);
+  const [msg,setMsg] = useState('');
+
+  const body = (
+    <div>
+      {!embedded && <div className="section-title" style={{marginTop:30}}>Configurar Supabase</div>}
+      {embedded && <div className="section-title">Configuração</div>}
+      <div className="card">
+        <p className="muted" style={{marginBottom:12}}>
+          Crie um projeto grátis em supabase.com, rode o SQL abaixo na aba SQL Editor, e cole a URL e a chave anon aqui.
+        </p>
+        <div className="field">
+          <label>Supabase URL</label>
+          <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" />
+        </div>
+        <div className="field">
+          <label>Supabase anon key</label>
+          <input value={key} onChange={e=>setKey(e.target.value)} placeholder="eyJhbGciOi..." />
+        </div>
+        <button className="btn btn-primary" onClick={()=>{onSave({url:url.trim(),key:key.trim()}); setMsg('Salvo ✓');}}>Salvar configuração</button>
+        {msg && <p className="muted" style={{marginTop:8}}>{msg}</p>}
+      </div>
+      <div className="card">
+        <div style={{fontWeight:700,marginBottom:8,fontSize:13}}>SQL para rodar no Supabase</div>
+        <textarea readOnly rows="14" style={{fontFamily:'JetBrains Mono, monospace',fontSize:11.5}} value={SQL_SCHEMA}></textarea>
+      </div>
+    </div>
+  );
+  if(embedded) return body;
+  return <div className="app"><div className="content">{body}</div></div>;
+}
+
+const SQL_SCHEMA = `create extension if not exists "uuid-ossp";
+
+create table if not exists expenses (
+  id uuid primary key default uuid_generate_v4(),
+  description text not null,
+  amount numeric not null,
+  category text,
+  date date not null,
+  added_by text not null,
+  source text default 'manual',
+  created_at timestamp default now()
+);
+
+alter table expenses enable row level security;
+
+create policy "anyone_select_expenses" on expenses for select using (true);
+create policy "anyone_insert_expenses" on expenses for insert with check (true);
+create policy "anyone_delete_expenses" on expenses for delete using (true);
+create policy "anyone_update_expenses" on expenses for update using (true);
+`;
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
