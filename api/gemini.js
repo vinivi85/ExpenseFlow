@@ -4,7 +4,7 @@
 // painel da Vercel (Project Settings → Environment Variables).
 // Pegue a chave grátis em https://aistudio.google.com/apikey (não pede cartão).
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3.5-flash';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
