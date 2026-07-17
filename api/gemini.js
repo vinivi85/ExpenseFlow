@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   try {
     // O front-end manda um formato parecido com o da Anthropic (messages: [{role, content}]).
     // Aqui a gente traduz pro formato do Gemini (contents: [{parts: [...]}]).
-    const { messages } = req.body;
+    const { messages, json } = req.body;
     const msg = messages[0];
 
     const parts = [];
@@ -54,7 +54,9 @@ export default async function handler(req, res) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ role: 'user', parts }],
-            generationConfig: { maxOutputTokens: 8192 },
+            generationConfig: json
+              ? { maxOutputTokens: 8192, responseMimeType: 'application/json' }
+              : { maxOutputTokens: 8192 },
           }),
           signal: controller.signal,
         }
