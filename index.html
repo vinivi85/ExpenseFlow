@@ -62,6 +62,13 @@
   .hero-split div{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--text);font-weight:600;}
   .hero-split span{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px;}
 
+  .period-picker{display:flex;gap:6px;margin-top:14px;}
+  .period-picker button{
+    padding:6px 12px;border-radius:20px;border:1px solid var(--bezel);
+    background:transparent;color:var(--muted);font-family:'Inter';font-weight:700;font-size:11.5px;cursor:pointer;
+  }
+  .period-picker button.active{background:rgba(57,255,136,0.12);border-color:var(--green);color:var(--green);}
+
   .tabs{display:flex;background:var(--panel);border-bottom:1px solid var(--bezel);position:sticky;top:0;z-index:5;}
   .tabs button{
     flex:1;padding:12px 4px;background:none;border:none;font-family:'Inter';font-weight:700;font-size:11.5px;letter-spacing:0.02em;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;
