@@ -4,7 +4,7 @@
   "outputDirectory": ".",
   "functions": {
     "api/gemini.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   }
 }
