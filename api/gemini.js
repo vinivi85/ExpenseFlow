@@ -55,7 +55,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             contents: [{ role: 'user', parts }],
             generationConfig: json
-              ? { maxOutputTokens: 8192, responseMimeType: 'application/json' }
+              ? { maxOutputTokens: 32768, responseMimeType: 'application/json' }
               : { maxOutputTokens: 8192 },
           }),
           signal: controller.signal,
@@ -80,7 +80,12 @@ export default async function handler(req, res) {
 
     // Traduz a resposta do Gemini de volta pro formato que o front-end espera
     // (o mesmo shape { content: [{type:"text", text:"..."}] } usado antes com a Anthropic).
-    const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+    const candidate = data.candidates?.[0];
+    if (candidate?.finishReason === 'MAX_TOKENS') {
+      res.status(422).json({ error: 'A fatura tem transações demais pra processar de uma vez. Tenta dividir o PDF em partes menores.', truncated: true });
+      return;
+    }
+    const text = candidate?.content?.parts?.map(p => p.text || '').join('') || '';
     res.status(200).json({ content: [{ type: 'text', text }] });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Erro interno' });
