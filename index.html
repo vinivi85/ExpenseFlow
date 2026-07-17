@@ -153,9 +153,9 @@ function getClient(cfg){
 }
 
 async function callClaude(payload){
-  // Chama nossa função serverless (/api/claude), que guarda a chave da Anthropic
-  // em segredo no servidor e repassa a chamada pra API real.
-  const res = await fetch("/api/claude", {
+  // Chama nossa função serverless (/api/gemini), que guarda a chave do Google
+  // em segredo no servidor e repassa a chamada pra API real (tier gratuito).
+  const res = await fetch("/api/gemini", {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body: JSON.stringify(payload)
@@ -316,7 +316,7 @@ function AddTab({client,user,reload,showToast,setTab}){
     setSuggesting(true);
     try{
       const text = await callClaude({
-        model:"claude-sonnet-4-6", max_tokens:1000,
+        max_tokens:1000,
         messages:[{role:"user",content:`Categorize esta despesa em UMA destas categorias exatas: ${CATEGORIES.join(', ')}.\nDescrição: "${desc}"\nResponda APENAS com o nome exato da categoria, nada mais.`}]
       });
       const cat = text.trim();
@@ -402,7 +402,7 @@ function PdfTab({client,user,reload,showToast,setTab}){
 [{"date":"YYYY-MM-DD","description":"texto original curto","amount":12.34,"category":"UMA de: ${CATEGORIES.join(', ')}"}]
 Regras: valores sempre positivos (gastos), ignore pagamentos/estornos de fatura, ignore linhas que não são transações, use a melhor estimativa de categoria.`;
       const text = await callClaude({
-        model:"claude-sonnet-4-6", max_tokens:4000,
+        max_tokens:4000,
         messages:[{role:"user",content:[
           {type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},
           {type:"text",text:prompt}

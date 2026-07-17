@@ -7,8 +7,8 @@ App de controle de gastos compartilhado (Vinicius + Aline), com importação de 
 1. Crie um repo novo no GitHub e suba esta pasta (`git init`, `git add .`, `git commit`, `git push`).
 2. Em vercel.com → **Add New Project** → importe o repo.
 3. Em **Settings → Environment Variables**, adicione:
-   - `ANTHROPIC_API_KEY` = sua chave da API da Anthropic (console.anthropic.com → API Keys)
-4. Deploy. A Vercel detecta `vercel.json` e serve `index.html` como estático + `api/claude.js` como função serverless automaticamente.
+   - `GEMINI_API_KEY` = sua chave gratuita do Google AI Studio (aistudio.google.com/apikey — não pede cartão)
+4. Deploy. A Vercel detecta `vercel.json` e serve `index.html` como estático + `api/gemini.js` como função serverless automaticamente.
 
 ## Configurar o banco (Supabase)
 
@@ -41,10 +41,12 @@ create policy "anyone_update_expenses" on expenses for update using (true);
 
 ## Como funciona a parte de IA
 
-O frontend nunca fala direto com a API da Anthropic. Ele chama `/api/claude`,
+O frontend nunca fala direto com a API do Google. Ele chama `/api/gemini`,
 uma função serverless que roda no servidor da Vercel, usa a variável de
-ambiente `ANTHROPIC_API_KEY` (nunca exposta no navegador) e repassa a
-resposta. Isso é usado em dois lugares:
+ambiente `GEMINI_API_KEY` (nunca exposta no navegador) e repassa a
+resposta. Usa o modelo `gemini-2.5-flash`, que fica no tier gratuito do
+Google (sem cartão de crédito, ~10 requisições/min, 250/dia — bem mais do
+que um app pessoal de gastos costuma usar). Isso é usado em dois lugares:
 
 - **Importar fatura em PDF**: extrai as transações e sugere categoria pra cada uma.
 - **Sugerir categoria** ao adicionar um gasto manual.

@@ -3,7 +3,7 @@
   "buildCommand": null,
   "outputDirectory": ".",
   "functions": {
-    "api/claude.js": {
+    "api/gemini.js": {
       "maxDuration": 30
     }
   }
