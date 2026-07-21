@@ -87,7 +87,8 @@
   .field input:focus, .field select:focus, .field textarea:focus{outline:none;border-color:var(--green);}
   .field input::placeholder, .field textarea::placeholder{color:#4A554C;}
   .row2{display:flex;gap:10px;}
-  .row2 .field{flex:1;}
+  .row2 .field{flex:1;min-width:0;}
+  .field input[type="date"]{width:100%;min-width:0;}
 
   .btn{
     display:inline-flex;align-items:center;justify-content:center;gap:6px;
