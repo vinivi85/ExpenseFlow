@@ -32,7 +32,7 @@
     min-height:100vh;
   }
   #root{min-height:100vh;}
-  .app{max-width:520px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 0 60px rgba(0,0,0,0.6);}
+  .app{max-width:520px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 0 60px rgba(0,0,0,0.6);overflow-x:hidden;}
 
   .topbar{
     background:linear-gradient(160deg,var(--panel) 0%, #0D130B 100%);
@@ -88,7 +88,7 @@
   .field input::placeholder, .field textarea::placeholder{color:#4A554C;}
   .row2{display:flex;gap:10px;}
   .row2 .field{flex:1;min-width:0;}
-  .field input[type="date"]{width:100%;min-width:0;}
+  .field input[type="date"]{width:100%;min-width:0;max-width:100%;}
 
   .btn{
     display:inline-flex;align-items:center;justify-content:center;gap:6px;
