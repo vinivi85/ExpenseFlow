@@ -62,10 +62,10 @@
   .hero-split div{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--text);font-weight:600;}
   .hero-split span{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px;}
 
-  .period-picker{display:flex;gap:6px;margin-top:14px;}
+  .period-picker{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;}
   .period-picker button{
-    padding:6px 12px;border-radius:20px;border:1px solid var(--bezel);
-    background:transparent;color:var(--muted);font-family:'Inter';font-weight:700;font-size:11.5px;cursor:pointer;
+    padding:6px 11px;border-radius:20px;border:1px solid var(--bezel);
+    background:transparent;color:var(--muted);font-family:'Inter';font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;
   }
   .period-picker button.active{background:rgba(57,255,136,0.12);border-color:var(--green);color:var(--green);}
 
@@ -105,7 +105,7 @@
     padding:11px 16px;border-radius:6px;border:none;font-family:'Inter';font-weight:700;font-size:14px;cursor:pointer;width:100%;
   }
   .btn-primary{background:var(--green);color:#04140A;}
-  .btn-primary:disabled{opacity:0.4;}
+  .btn:disabled{opacity:0.35;cursor:not-allowed;}
   .btn-gold{background:var(--amber);color:#1A1000;}
   .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--bezel);}
   .btn-sm{width:auto;padding:7px 12px;font-size:12.5px;}
