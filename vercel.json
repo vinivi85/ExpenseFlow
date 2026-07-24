@@ -5,6 +5,18 @@
   "functions": {
     "api/gemini.js": {
       "maxDuration": 300
+    },
+    "api/plaid-sync-all.js": {
+      "maxDuration": 60
+    },
+    "api/plaid-cron.js": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/plaid-cron",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }
