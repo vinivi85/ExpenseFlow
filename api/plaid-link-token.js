@@ -24,18 +24,26 @@ export default async function handler(req, res) {
   }
 
   try {
+    const body = {
+      client_id: clientId,
+      secret: secret,
+      client_name: 'Expense Flow',
+      language: 'en',
+      country_codes: ['US'],
+      user: { client_user_id: 'expenseflow-household' },
+      products: ['transactions'],
+    };
+    // Necessário pra bancos que usam login OAuth (a maioria hoje) — sem isso,
+    // depois do login no site do banco não tem como o widget voltar pro nosso app.
+    // A mesma URL precisa estar cadastrada no painel do Plaid (Team Settings → API →
+    // Allowed redirect URIs).
+    if (process.env.PLAID_REDIRECT_URI) {
+      body.redirect_uri = process.env.PLAID_REDIRECT_URI;
+    }
     const upstream = await fetch(`${plaidBaseUrl()}/link/token/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        secret: secret,
-        client_name: 'Expense Flow',
-        language: 'en',
-        country_codes: ['US'],
-        user: { client_user_id: 'expenseflow-household' },
-        products: ['transactions'],
-      }),
+      body: JSON.stringify(body),
     });
     const data = await upstream.json();
     if (!upstream.ok) {
