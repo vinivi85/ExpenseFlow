@@ -17,7 +17,7 @@ export default async function handler(req, res) {
 
   try {
     const upstream = await fetch(
-      `${supabaseUrl}/rest/v1/plaid_connections?select=card_id,institution_name,account_name,status,last_synced_at`,
+      `${supabaseUrl}/rest/v1/plaid_connections?select=card_id,institution_name,account_name,status,last_synced_at,current_balance,available_balance,credit_limit,iso_currency_code,balance_updated_at`,
       {
         headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` },
       }

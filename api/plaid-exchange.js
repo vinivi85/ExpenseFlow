@@ -9,6 +9,8 @@ function plaidBaseUrl() {
   return env === 'production' ? 'https://production.plaid.com' : 'https://sandbox.plaid.com';
 }
 
+import { fetchAndStoreBalance } from './_plaid-lib.js';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Método não permitido' });
@@ -87,6 +89,8 @@ export default async function handler(req, res) {
       res.status(500).json({ error: 'Erro ao salvar a conexão: ' + err });
       return;
     }
+
+    await fetchAndStoreBalance({ supabaseUrl, serviceKey, clientId, secret, conn: { id: (await upsertRes.json())[0]?.id, plaid_access_token: accessToken, plaid_account_id: accountId } });
 
     res.status(200).json({ ok: true, account_name: accountName });
   } catch (err) {

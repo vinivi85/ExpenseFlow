@@ -35,6 +35,35 @@ async function supaFetch(supabaseUrl, serviceKey, path, opts = {}) {
   });
 }
 
+// Busca saldo/limite disponível de uma conexão e atualiza no banco.
+async function fetchAndStoreBalance({ supabaseUrl, serviceKey, clientId, secret, conn }) {
+  try {
+    const balRes = await fetch(`${plaidBaseUrl()}/accounts/balance/get`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId, secret: secret, access_token: conn.plaid_access_token }),
+    });
+    const balData = await balRes.json();
+    if (!balRes.ok) return { error: balData.error_message };
+    const account = (balData.accounts || []).find(a => a.account_id === conn.plaid_account_id) || balData.accounts?.[0];
+    if (!account) return { error: 'Conta não encontrada' };
+    const balances = account.balances || {};
+    await supaFetch(supabaseUrl, serviceKey, `plaid_connections?id=eq.${conn.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        current_balance: balances.current,
+        available_balance: balances.available,
+        credit_limit: balances.limit,
+        iso_currency_code: balances.iso_currency_code,
+        balance_updated_at: new Date().toISOString(),
+      }),
+    });
+    return { ok: true };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
 // Sincroniza UMA conexão (um cartão). Recebe os dados já carregados (cartões,
 // categorias, usuário padrão) pra não precisar buscar de novo a cada cartão
 // quando estamos sincronizando vários de uma vez.
@@ -94,6 +123,8 @@ async function syncOneConnection({ supabaseUrl, serviceKey, clientId, secret, co
     body: JSON.stringify({ cursor, last_synced_at: new Date().toISOString(), status: 'connected' }),
   });
 
+  await fetchAndStoreBalance({ supabaseUrl, serviceKey, clientId, secret, conn });
+
   return { imported: toInsert.length };
 }
 
@@ -121,4 +152,4 @@ async function syncAllConnections({ supabaseUrl, serviceKey, clientId, secret })
   return results;
 }
 
-export { syncOneConnection, syncAllConnections, plaidBaseUrl };
+export { syncOneConnection, syncAllConnections, plaidBaseUrl, fetchAndStoreBalance };
