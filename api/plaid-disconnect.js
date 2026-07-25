@@ -1,11 +1,24 @@
 // Vercel Serverless Function
-// Desconecta um cartão do Plaid: tenta remover o item no lado do Plaid (boa prática,
-// libera a vaga contra o limite de Items) e sempre remove a conexão local, mesmo se
-// a remoção no Plaid falhar (ex: token de Sandbox que não vale mais em produção).
+// Desassocia um cartão da conta do Plaid. Se essa era a última conta usando aquele
+// login (item), remove o login inteiro no lado do Plaid também (libera a vaga
+// contra o limite de Items). Se outras contas do mesmo login ainda estiverem em uso
+// por outros cartões, só desfaz essa associação específica.
 
 function plaidBaseUrl() {
   const env = process.env.PLAID_ENV || 'sandbox';
   return env === 'production' ? 'https://production.plaid.com' : 'https://sandbox.plaid.com';
+}
+
+async function supaFetch(supabaseUrl, serviceKey, path, opts = {}) {
+  return fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': serviceKey,
+      'Authorization': `Bearer ${serviceKey}`,
+      ...(opts.headers || {}),
+    },
+  });
 }
 
 export default async function handler(req, res) {
@@ -27,35 +40,36 @@ export default async function handler(req, res) {
     const { card_id } = req.body;
     if (!card_id) { res.status(400).json({ error: 'card_id é obrigatório' }); return; }
 
-    const connRes = await fetch(`${supabaseUrl}/rest/v1/plaid_connections?card_id=eq.${card_id}&select=*`, {
-      headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` },
-    });
+    const connRes = await supaFetch(supabaseUrl, serviceKey, `plaid_connections?card_id=eq.${card_id}&select=*`);
     const connections = await connRes.json();
     if (!connections || connections.length === 0) {
       res.status(404).json({ error: 'Cartão não tem conexão pra desconectar' });
       return;
     }
+    const conn = connections[0];
+    const itemRef = conn.item_ref;
 
-    // Tenta remover no lado do Plaid — se o token for inválido (ex: sobra de teste
-    // do Sandbox depois de trocar pra produção), ignora o erro e segue removendo local.
-    if (clientId && secret) {
-      try {
-        await fetch(`${plaidBaseUrl()}/item/remove`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ client_id: clientId, secret: secret, access_token: connections[0].plaid_access_token }),
-        });
-      } catch (e) { /* não bloqueia a remoção local */ }
-    }
+    // Remove só essa conexão específica (desassocia do cartão)
+    await supaFetch(supabaseUrl, serviceKey, `plaid_connections?id=eq.${conn.id}`, { method: 'DELETE' });
 
-    const delRes = await fetch(`${supabaseUrl}/rest/v1/plaid_connections?card_id=eq.${card_id}`, {
-      method: 'DELETE',
-      headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` },
-    });
-    if (!delRes.ok) {
-      const err = await delRes.text();
-      res.status(500).json({ error: 'Erro ao remover conexão: ' + err });
-      return;
+    // Se não sobrou mais nenhuma conta desse mesmo login usando um cartão, remove o login inteiro
+    if (itemRef) {
+      const remainingRes = await supaFetch(supabaseUrl, serviceKey, `plaid_connections?item_ref=eq.${itemRef}&select=id`);
+      const remaining = await remainingRes.json();
+      if (!remaining || remaining.length === 0) {
+        const itemRowRes = await supaFetch(supabaseUrl, serviceKey, `plaid_items?id=eq.${itemRef}&select=*`);
+        const itemRow = (await itemRowRes.json())[0];
+        if (itemRow && clientId && secret) {
+          try {
+            await fetch(`${plaidBaseUrl()}/item/remove`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ client_id: clientId, secret: secret, access_token: itemRow.plaid_access_token }),
+            });
+          } catch (e) { /* token pode já ser inválido (ex: sobra de Sandbox), não bloqueia */ }
+        }
+        await supaFetch(supabaseUrl, serviceKey, `plaid_items?id=eq.${itemRef}`, { method: 'DELETE' });
+      }
     }
 
     res.status(200).json({ ok: true });

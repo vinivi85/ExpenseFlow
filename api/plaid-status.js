@@ -27,7 +27,14 @@ export default async function handler(req, res) {
       res.status(upstream.status).json({ error: 'Erro ao consultar conexões' });
       return;
     }
-    res.status(200).json({ connections: data });
+
+    const pendingRes = await fetch(
+      `${supabaseUrl}/rest/v1/plaid_connections?card_id=is.null&select=id,institution_name,account_name`,
+      { headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` } }
+    );
+    const pending = pendingRes.ok ? await pendingRes.json() : [];
+
+    res.status(200).json({ connections: data, pending });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Erro interno' });
   }
