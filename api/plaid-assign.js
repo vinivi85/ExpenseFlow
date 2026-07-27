@@ -53,14 +53,13 @@ export default async function handler(req, res) {
       finalCardId = (await cardInsertRes.json())[0].id;
     }
 
-    // Acrescenta o nome real da conta do Plaid entre parênteses no nome do cartão,
-    // se ainda não estiver lá.
-    const cardRes = await supaFetch(supabaseUrl, serviceKey, `cards?id=eq.${finalCardId}&select=*`);
-    const cardRows = await cardRes.json();
-    if (cardRows && cardRows[0] && conn.account_name && !cardRows[0].name.includes(conn.account_name)) {
+    // Regra: sempre que conectar via Plaid, o nome do cartão passa a ser
+    // exatamente o que o Plaid devolveu (a descrição real da conta), pra nunca
+    // ficar desalinhado entre o que tá cadastrado e o que a conta realmente é.
+    if (conn.account_name) {
       await supaFetch(supabaseUrl, serviceKey, `cards?id=eq.${finalCardId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ name: `${cardRows[0].name} (${conn.account_name})` }),
+        body: JSON.stringify({ name: conn.account_name }),
       });
     }
 
