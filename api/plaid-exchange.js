@@ -89,7 +89,7 @@ export default async function handler(req, res) {
     const connRows = accounts.map(a => ({
       item_ref: itemRow.id,
       institution_name: institution_name || null,
-      account_name: a.name + (a.mask ? ' ...' + a.mask : ''),
+      account_name: a.name + (a.mask && !a.name.includes(a.mask) ? ' ...' + a.mask : ''),
       plaid_account_id: a.account_id,
       status: 'pending', // ainda não associado a um cartão
       card_id: null,
