@@ -672,8 +672,38 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
     );
   }
 
+  function cardFigures(c){
+    const b = balanceMap[c.id];
+    const connected = !!b && b.status==='connected';
+    const isCredit = (c.account_type||'credit')==='credit';
+    const plaidHasData = isCredit
+      ? (connected && b.credit_limit!=null && (b.available_balance!=null || b.current_balance!=null))
+      : (connected && (b.available_balance!=null || b.current_balance!=null));
+    const hasManual = isCredit ? (c.manual_limit!=null && c.manual_balance!=null) : (c.manual_balance!=null);
+    if(isCredit){
+      if(plaidHasData) return { limit:b.credit_limit||0, owed:b.current_balance||0, available:b.available_balance||0, hasData:true };
+      if(hasManual) return { limit:c.manual_limit||0, owed:c.manual_balance||0, available:(c.manual_limit-c.manual_balance)||0, hasData:true };
+      return { limit:0, owed:0, available:0, hasData:false };
+    }
+    if(plaidHasData) return { balance:(b.available_balance||b.current_balance||0), hasData:true };
+    if(hasManual) return { balance:c.manual_balance||0, hasData:true };
+    return { balance:0, hasData:false };
+  }
+
   const creditCards = (cards||[]).filter(c=>(c.account_type||'credit')==='credit');
   const bankCards = (cards||[]).filter(c=>c.account_type==='bank');
+
+  const creditTotals = creditCards.reduce((acc,c)=>{
+    const f = cardFigures(c);
+    if(f.hasData){ acc.limit+=f.limit; acc.owed+=f.owed; acc.available+=f.available; }
+    return acc;
+  }, {limit:0,owed:0,available:0});
+
+  const bankTotal = bankCards.reduce((acc,c)=>{
+    const f = cardFigures(c);
+    if(f.hasData) acc += f.balance;
+    return acc;
+  }, 0);
 
   return (
     <div>
@@ -706,14 +736,32 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       {creditCards.length>0 && (
         <>
           <div className="section-title">💳 Cartões de Crédito</div>
-          <div className="card">{creditCards.map(renderCardRow)}</div>
+          <div className="card">
+            {creditCards.map(renderCardRow)}
+            <div style={{padding:'12px 2px 2px',marginTop:4}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+                <span className="muted">Limite total</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(creditTotals.limit)}</b>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+                <span className="muted">Saldo em aberto total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--amber)'}}>{fmtBRL(creditTotals.owed)}</b>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+                <span className="muted">Disponível total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(creditTotals.available)}</b>
+              </div>
+            </div>
+          </div>
         </>
       )}
 
       {bankCards.length>0 && (
         <>
           <div className="section-title">🏦 Contas Bancárias</div>
-          <div className="card">{bankCards.map(renderCardRow)}</div>
+          <div className="card">
+            {bankCards.map(renderCardRow)}
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,padding:'12px 2px 2px',marginTop:4}}>
+              <span className="muted">Saldo total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(bankTotal)}</b>
+            </div>
+          </div>
         </>
       )}
 
