@@ -595,14 +595,15 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       ? (connected && b.credit_limit!=null && (b.available_balance!=null || b.current_balance!=null))
       : (connected && (b.available_balance!=null || b.current_balance!=null));
     const hasManual = isCredit ? (c.manual_limit!=null && c.manual_balance!=null) : (c.manual_balance!=null);
-    const dotColor = plaidHasData ? 'var(--green)' : (hasManual ? 'var(--amber)' : 'var(--red)');
+    const hasData = plaidHasData || hasManual;
+    const dotColor = hasData ? 'var(--green)' : 'var(--red)';
     const manualAvailable = isCredit && hasManual ? (c.manual_limit - c.manual_balance) : c.manual_balance;
     const isEditing = editingManualId===c.id;
     const showManualLink = !plaidHasData;
 
     return (
       <div key={c.id} style={{padding:'10px 2px',borderBottom:'1px dashed var(--bezel)'}}>
-        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:connected?2:6}}>
           <span style={{width:7,height:7,borderRadius:'50%',background:dotColor,display:'inline-block',flexShrink:0}}></span>
           <span className="ledger-desc" style={{flex:1}}>{c.name}</span>
           <select value={c.account_type||'credit'} onChange={ev=>setAccountType(c.id,ev.target.value)} style={{width:'auto',padding:'3px 6px',fontSize:10.5}}>
@@ -610,6 +611,11 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
             <option value="bank">Conta</option>
           </select>
         </div>
+        {connected && (
+          <div style={{marginBottom:6}}>
+            <span style={{display:'inline-block',fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff'}}>PLAID</span>
+          </div>
+        )}
 
         {!isEditing && (
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
