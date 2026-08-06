@@ -920,6 +920,7 @@ function ListTab({expenses,loading,client,categories,users,cards,reload,showToas
   const [draft,setDraft] = useState(null);
   const [saving,setSaving] = useState(false);
   const [cardFilter,setCardFilter] = useState('');
+  const [categoryFilter,setCategoryFilter] = useState('');
   const [selectMode,setSelectMode] = useState(false);
   const [selectedIds,setSelectedIds] = useState([]);
   const [deletingSelected,setDeletingSelected] = useState(false);
@@ -1013,7 +1014,9 @@ function ListTab({expenses,loading,client,categories,users,cards,reload,showToas
   }
 
   // Agrupa por mês (a lista já vem ordenada por data desc do Supabase)
-  const filteredExpenses = cardFilter ? expenses.filter(e=>(e.card||'Sem cartão/fonte')===cardFilter) : expenses;
+  const filteredExpenses = expenses
+    .filter(e => cardFilter ? (e.card||'Sem cartão/fonte')===cardFilter : true)
+    .filter(e => categoryFilter ? (e.category||'Outros')===categoryFilter : true);
   const groups = [];
   let currentKey = null, currentGroup = null;
   filteredExpenses.forEach(e=>{
@@ -1050,11 +1053,21 @@ function ListTab({expenses,loading,client,categories,users,cards,reload,showToas
           )}
         </div>
       </div>
-      {cards.length>0 && (
-        <select value={cardFilter} onChange={ev=>setCardFilter(ev.target.value)} style={{marginBottom:14}}>
-          <option value="">Todos os cartões / fontes</option>
-          {cards.map(c=><option key={c} value={c}>{c}</option>)}
-        </select>
+      {(cards.length>0 || categories.length>0) && (
+        <div className="row2" style={{marginBottom:14}}>
+          {cards.length>0 && (
+            <select value={cardFilter} onChange={ev=>setCardFilter(ev.target.value)}>
+              <option value="">Todos os cartões / fontes</option>
+              {cards.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+          {categories.length>0 && (
+            <select value={categoryFilter} onChange={ev=>setCategoryFilter(ev.target.value)}>
+              <option value="">Todas as categorias</option>
+              {categories.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+        </div>
       )}
       {confirmingClear && (
         <div className="card" style={{borderColor:'var(--red)'}}>
@@ -1072,7 +1085,7 @@ function ListTab({expenses,loading,client,categories,users,cards,reload,showToas
       )}
       {loading && <div className="empty">Carregando…</div>}
       {!loading && filteredExpenses.length===0 && (
-        <div className="empty"><span className="big">📭</span>{cardFilter ? 'Nenhum lançamento com "'+cardFilter+'".' : 'Nada lançado ainda.'}</div>
+        <div className="empty"><span className="big">📭</span>{(cardFilter||categoryFilter) ? 'Nenhum lançamento com esse filtro.' : 'Nada lançado ainda.'}</div>
       )}
       {groups.map(g=>(
         <div key={g.key}>
