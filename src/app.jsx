@@ -1056,13 +1056,13 @@ function ListTab({expenses,loading,client,categories,users,cards,reload,showToas
       {(cards.length>0 || categories.length>0) && (
         <div className="row2" style={{marginBottom:14}}>
           {cards.length>0 && (
-            <select value={cardFilter} onChange={ev=>setCardFilter(ev.target.value)}>
+            <select value={cardFilter} onChange={ev=>setCardFilter(ev.target.value)} style={{flex:1,minWidth:0}}>
               <option value="">Todos os cartões / fontes</option>
               {cards.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
           )}
           {categories.length>0 && (
-            <select value={categoryFilter} onChange={ev=>setCategoryFilter(ev.target.value)}>
+            <select value={categoryFilter} onChange={ev=>setCategoryFilter(ev.target.value)} style={{flex:1,minWidth:0}}>
               <option value="">Todas as categorias</option>
               {categories.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
