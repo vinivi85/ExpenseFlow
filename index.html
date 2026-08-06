@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Expense Flow</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#FFFFFF" />
@@ -23,16 +23,16 @@
     --line:#E2E5EA;
   }
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
+  html,body{margin:0;padding:0;height:100%;overscroll-behavior:none;
+    position:fixed;inset:0;overflow:hidden;width:100%;}
   body{
     background:var(--bg);
     color:var(--text);
     font-family:'Inter',sans-serif;
     -webkit-font-smoothing:antialiased;
-    min-height:100vh;
   }
-  #root{min-height:100vh;}
-  .app{max-width:520px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 0 40px rgba(0,0,0,0.08);overflow-x:hidden;}
+  #root{height:100vh;height:100dvh;overflow:hidden;}
+  .app{max-width:520px;margin:0 auto;height:100vh;height:100dvh;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 0 40px rgba(0,0,0,0.08);overflow:hidden;}
 
   .topbar{
     background:linear-gradient(180deg,#FFFFFF 0%, #FBFCFD 100%);
@@ -88,7 +88,7 @@
   .tabs button .tab-icon{font-size:18px;line-height:1;}
   .tabs button.active{color:var(--green);}
 
-  .content{flex:1;padding:18px 20px calc(84px + env(safe-area-inset-bottom));}
+  .content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:18px 20px calc(84px + env(safe-area-inset-bottom));}
   .section-title{font-family:'Inter',sans-serif;font-size:15px;font-weight:800;margin:4px 0 14px;color:var(--text);text-transform:uppercase;letter-spacing:0.06em;}
 
   .month-divider{
