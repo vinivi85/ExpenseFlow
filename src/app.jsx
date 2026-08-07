@@ -454,7 +454,7 @@ function App(){
   const descList = Object.values(byDesc).sort((a,b)=>b.total-a.total);
   const maxDesc = descList.length ? descList[0].total : 1;
 
-  const listExpenses = user!==ALL_VIEW ? expenses.filter(e=>e.added_by===user) : expenses;
+  const listExpenses = viewExpenses;
 
   if(!client){
     return <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} />;
@@ -504,7 +504,7 @@ function App(){
 
       <div className="content">
         {tab==='dash' && <Dashboard catList={catList} maxCat={maxCat} cardList={cardList} maxCard={maxCard} descList={descList} maxDesc={maxDesc} periodTotal={periodTotal} cards={cards} client={client} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} />}
-        {tab==='list' && <ListTab expenses={listExpenses} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
+        {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='proj' && <ProjectionTab expenses={expenses} client={client} reload={loadExpenses} showToast={showToast} />}
         {tab==='add' && <AddTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
         {tab==='pdf' && <PdfTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} expenses={expenses} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
@@ -913,7 +913,7 @@ function ProjectionTab({expenses,client,reload,showToast}){
   );
 }
 
-function ListTab({expenses,loading,client,categories,users,cards,reload,showToast}){
+function ListTab({expenses,totalCount,loading,client,categories,users,cards,reload,showToast}){
   const [confirmingClear,setConfirmingClear] = useState(false);
   const [clearing,setClearing] = useState(false);
   const [editingId,setEditingId] = useState(null);
@@ -1035,7 +1035,7 @@ function ListTab({expenses,loading,client,categories,users,cards,reload,showToas
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
         <div className="section-title" style={{margin:0}}>Lançamentos</div>
         <div style={{display:'flex',gap:14,alignItems:'center'}}>
-          {!selectMode && expenses.length>0 && !confirmingClear && (
+          {!selectMode && totalCount>0 && !confirmingClear && (
             <>
               <span className="link" onClick={()=>setSelectMode(true)}>Selecionar</span>
               <span className="link" style={{color:'var(--red)'}} onClick={()=>setConfirmingClear(true)}>Limpar tudo</span>
@@ -1073,7 +1073,7 @@ function ListTab({expenses,loading,client,categories,users,cards,reload,showToas
         <div className="card" style={{borderColor:'var(--red)'}}>
           <div style={{fontWeight:700,marginBottom:6,color:'var(--red)'}}>⚠️ Apagar todos os lançamentos?</div>
           <p className="muted" style={{marginBottom:14}}>
-            Isso vai excluir permanentemente todos os {expenses.length} lançamentos (manuais e importados). Não tem como desfazer.
+            Isso vai excluir permanentemente <b>todos os {totalCount} lançamentos</b> (manuais e importados) — inclusive os que não estão aparecendo agora por causa dos filtros. Não tem como desfazer.
           </p>
           <div className="row2">
             <button className="btn btn-ghost" onClick={()=>setConfirmingClear(false)} disabled={clearing}>Cancelar</button>
