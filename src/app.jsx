@@ -1187,6 +1187,12 @@ function ListTab({expenses,loading,client,categories,users,cards,reload,showToas
           </div>
         </div>
       ))}
+      {filteredExpenses.length>0 && (
+        <div className="month-divider" style={{borderTop:'2px solid var(--green)',borderBottom:'none',paddingTop:10,marginTop:4}}>
+          <span style={{color:'var(--text)'}}>Total geral</span>
+          <span style={{fontSize:15,color:'var(--green)'}}>{fmtBRL(filteredExpenses.reduce((s,e)=>s+Number(e.amount),0))}</span>
+        </div>
+      )}
     </div>
   );
 }
