@@ -1005,11 +1005,12 @@ function ListTab({expenses,totalCount,loading,client,categories,users,cards,relo
 
   async function clearAll(){
     setClearing(true);
-    const {error} = await client.from('expenses').delete().not('id','is',null);
+    const ids = filteredExpenses.map(e=>e.id);
+    const {error} = await client.from('expenses').delete().in('id', ids);
     setClearing(false);
     setConfirmingClear(false);
     if(error){ showToast('Erro ao limpar: '+error.message); return; }
-    showToast('Todos os lançamentos foram apagados');
+    showToast(ids.length+' lançamento(s) apagado(s)');
     reload();
   }
 
@@ -1038,7 +1039,7 @@ function ListTab({expenses,totalCount,loading,client,categories,users,cards,relo
           {!selectMode && totalCount>0 && !confirmingClear && (
             <>
               <span className="link" onClick={()=>setSelectMode(true)}>Selecionar</span>
-              <span className="link" style={{color:'var(--red)'}} onClick={()=>setConfirmingClear(true)}>Limpar tudo</span>
+              <span className="link" style={{color:'var(--red)'}} onClick={()=>setConfirmingClear(true)}>Limpar seleção</span>
             </>
           )}
           {selectMode && (
@@ -1071,14 +1072,14 @@ function ListTab({expenses,totalCount,loading,client,categories,users,cards,relo
       )}
       {confirmingClear && (
         <div className="card" style={{borderColor:'var(--red)'}}>
-          <div style={{fontWeight:700,marginBottom:6,color:'var(--red)'}}>⚠️ Apagar todos os lançamentos?</div>
+          <div style={{fontWeight:700,marginBottom:6,color:'var(--red)'}}>⚠️ Apagar os lançamentos filtrados?</div>
           <p className="muted" style={{marginBottom:14}}>
-            Isso vai excluir permanentemente <b>todos os {totalCount} lançamentos</b> (manuais e importados) — inclusive os que não estão aparecendo agora por causa dos filtros. Não tem como desfazer.
+            Isso vai excluir permanentemente <b>{filteredExpenses.length} lançamento(s)</b> — só os que estão aparecendo agora com os filtros atuais (período, cartão/fonte, categoria). Os outros {totalCount-filteredExpenses.length} fora do filtro não são afetados. Não tem como desfazer.
           </p>
           <div className="row2">
             <button className="btn btn-ghost" onClick={()=>setConfirmingClear(false)} disabled={clearing}>Cancelar</button>
             <button className="btn btn-primary" style={{background:'var(--red)',color:'#fff'}} onClick={clearAll} disabled={clearing}>
-              {clearing ? <span className="spinner"></span> : 'Sim, apagar tudo'}
+              {clearing ? <span className="spinner"></span> : 'Sim, apagar'}
             </button>
           </div>
         </div>
