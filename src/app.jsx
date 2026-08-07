@@ -504,7 +504,7 @@ function App(){
 
       <div className="content">
         {tab==='dash' && <Dashboard catList={catList} maxCat={maxCat} cardList={cardList} maxCard={maxCard} descList={descList} maxDesc={maxDesc} periodTotal={periodTotal} cards={cards} client={client} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} />}
-        {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
+        {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} periodLabel={periodLabels[period]} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='proj' && <ProjectionTab expenses={expenses} client={client} reload={loadExpenses} showToast={showToast} />}
         {tab==='add' && <AddTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
         {tab==='pdf' && <PdfTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} expenses={expenses} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
@@ -913,7 +913,7 @@ function ProjectionTab({expenses,client,reload,showToast}){
   );
 }
 
-function ListTab({expenses,totalCount,loading,client,categories,users,cards,reload,showToast}){
+function ListTab({expenses,totalCount,periodLabel,loading,client,categories,users,cards,reload,showToast}){
   const [confirmingClear,setConfirmingClear] = useState(false);
   const [clearing,setClearing] = useState(false);
   const [editingId,setEditingId] = useState(null);
@@ -1073,8 +1073,13 @@ function ListTab({expenses,totalCount,loading,client,categories,users,cards,relo
       {confirmingClear && (
         <div className="card" style={{borderColor:'var(--red)'}}>
           <div style={{fontWeight:700,marginBottom:6,color:'var(--red)'}}>⚠️ Apagar os lançamentos filtrados?</div>
+          <div style={{background:'var(--bg)',border:'1px solid var(--bezel)',borderRadius:6,padding:'8px 10px',marginBottom:10,fontSize:12.5}}>
+            <div><b>Período:</b> {periodLabel || 'todo o período'}</div>
+            <div><b>Cartão/fonte:</b> {cardFilter || 'todos'}</div>
+            <div><b>Categoria:</b> {categoryFilter || 'todas'}</div>
+          </div>
           <p className="muted" style={{marginBottom:14}}>
-            Isso vai excluir permanentemente <b>{filteredExpenses.length} lançamento(s)</b> — só os que estão aparecendo agora com os filtros atuais (período, cartão/fonte, categoria). Os outros {totalCount-filteredExpenses.length} fora do filtro não são afetados. Não tem como desfazer.
+            Isso vai excluir permanentemente <b>{filteredExpenses.length} lançamento(s)</b> que batem com esse filtro. Os outros {totalCount-filteredExpenses.length} fora do filtro não são afetados. Não tem como desfazer.
           </p>
           <div className="row2">
             <button className="btn btn-ghost" onClick={()=>setConfirmingClear(false)} disabled={clearing}>Cancelar</button>
