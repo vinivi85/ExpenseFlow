@@ -1560,6 +1560,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
   const [editingUserId,setEditingUserId] = useState(null);
   const [editingUserName,setEditingUserName] = useState('');
   const [newCard,setNewCard] = useState('');
+  const [newCardType,setNewCardType] = useState('credit');
   const [editingCardId,setEditingCardId] = useState(null);
   const [editingCardName,setEditingCardName] = useState('');
   const [busy,setBusy] = useState(false);
@@ -1797,10 +1798,10 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
       showToast('Esse cartão já existe'); return;
     }
     setBusy(true);
-    const {error} = await client.from('cards').insert({name});
+    const {error} = await client.from('cards').insert({name, account_type: newCardType});
     setBusy(false);
     if(error){ showToast('Erro: '+error.message); return; }
-    setNewCard('');
+    setNewCard(''); setNewCardType('credit');
     reloadCards();
   }
 
@@ -1912,6 +1913,10 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
             <div className="field" style={{marginBottom:0,flex:1}}>
               <input value={newCard} onChange={e=>setNewCard(e.target.value)} placeholder="Ex: Capital One Quicksilver" onKeyDown={e=>{ if(e.key==='Enter') addCard(); }} />
             </div>
+            <select value={newCardType} onChange={e=>setNewCardType(e.target.value)} style={{flex:'0 0 auto',width:'auto'}}>
+              <option value="credit">Crédito</option>
+              <option value="bank">Conta</option>
+            </select>
             <button className="btn btn-primary btn-sm" style={{flex:'0 0 auto'}} onClick={addCard} disabled={busy}>Adicionar</button>
           </div>
         </div>
