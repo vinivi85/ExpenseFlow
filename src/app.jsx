@@ -587,6 +587,12 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
   const balanceMap = {};
   balances.forEach(b=>{ balanceMap[b.card_id] = b; });
 
+  function isStale(timestamp){
+    if(!timestamp) return false;
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    return diffMs >= 3*24*60*60*1000;
+  }
+
   function renderCardRow(c){
     const b = balanceMap[c.id];
     const connected = !!b && b.status==='connected';
@@ -638,12 +644,12 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
                 <span className="link" onClick={()=>startManualEdit(c)}>{hasManual?'editar':'+ adicionar'}</span>
               )}
               {plaidHasData && b.balance_updated_at && (
-                <div className="muted" style={{fontSize:9.5,marginTop:2}}>
+                <div className={isStale(b.balance_updated_at) ? undefined : "muted"} style={{fontSize:9.5,marginTop:2,color:isStale(b.balance_updated_at)?'var(--red)':undefined}}>
                   atualizado {new Date(b.balance_updated_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}
                 </div>
               )}
               {!plaidHasData && hasManual && c.manual_balance_updated_at && (
-                <div className="muted" style={{fontSize:9.5,marginTop:2}}>
+                <div className={isStale(c.manual_balance_updated_at) ? undefined : "muted"} style={{fontSize:9.5,marginTop:2,color:isStale(c.manual_balance_updated_at)?'var(--red)':undefined}}>
                   atualizado {new Date(c.manual_balance_updated_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}
                 </div>
               )}
