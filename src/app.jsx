@@ -966,6 +966,7 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
   const [saving,setSaving] = useState(false);
   const [cardFilter,setCardFilter] = useState('');
   const [categoryFilter,setCategoryFilter] = useState('');
+  const [searchText,setSearchText] = useState('');
   const [selectMode,setSelectMode] = useState(false);
   const [selectedIds,setSelectedIds] = useState([]);
   const [confirmingDeleteId,setConfirmingDeleteId] = useState(null);
@@ -1066,7 +1067,15 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
   // Agrupa por mês (a lista já vem ordenada por data desc do Supabase)
   const filteredExpenses = expenses
     .filter(e => cardFilter ? (e.card||'Sem cartão/fonte')===cardFilter : true)
-    .filter(e => categoryFilter ? (e.category||'Outros')===categoryFilter : true);
+    .filter(e => categoryFilter ? (e.category||'Outros')===categoryFilter : true)
+    .filter(e => {
+      if(!searchText.trim()) return true;
+      const q = searchText.trim().toLowerCase();
+      return (e.description||'').toLowerCase().includes(q)
+        || (e.category||'').toLowerCase().includes(q)
+        || (e.card||'').toLowerCase().includes(q)
+        || (e.added_by||'').toLowerCase().includes(q);
+    });
   const groups = [];
   let currentKey = null, currentGroup = null;
   filteredExpenses.forEach(e=>{
@@ -1119,6 +1128,15 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
           )}
         </div>
       )}
+      <div style={{position:'relative',marginBottom:14}}>
+        <span style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',fontSize:14,color:'var(--muted)',pointerEvents:'none'}}>🔍</span>
+        <input
+          value={searchText}
+          onChange={ev=>setSearchText(ev.target.value)}
+          placeholder="Buscar por descrição, categoria, cartão ou responsável…"
+          style={{paddingLeft:32}}
+        />
+      </div>
       {confirmingClear && (
         <div className="card" style={{borderColor:'var(--red)'}}>
           <div style={{fontWeight:700,marginBottom:6,color:'var(--red)'}}>⚠️ Apagar os lançamentos filtrados?</div>
@@ -1126,6 +1144,7 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
             <div><b>Período:</b> {periodLabel || 'todo o período'}</div>
             <div><b>Cartão/fonte:</b> {cardFilter || 'todos'}</div>
             <div><b>Categoria:</b> {categoryFilter || 'todas'}</div>
+            {searchText.trim() && <div><b>Busca:</b> "{searchText.trim()}"</div>}
           </div>
           <p className="muted" style={{marginBottom:14}}>
             Isso vai excluir permanentemente <b>{filteredExpenses.length} lançamento(s)</b> que batem com esse filtro. Os outros {totalCount-filteredExpenses.length} fora do filtro não são afetados. Não tem como desfazer.
@@ -1140,7 +1159,7 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
       )}
       {loading && <div className="empty">Carregando…</div>}
       {!loading && filteredExpenses.length===0 && (
-        <div className="empty"><span className="big">📭</span>{(cardFilter||categoryFilter) ? 'Nenhum lançamento com esse filtro.' : 'Nada lançado ainda.'}</div>
+        <div className="empty"><span className="big">📭</span>{(cardFilter||categoryFilter||searchText.trim()) ? 'Nenhum lançamento com esse filtro.' : 'Nada lançado ainda.'}</div>
       )}
       {groups.map(g=>(
         <div key={g.key}>
