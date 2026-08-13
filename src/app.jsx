@@ -930,6 +930,7 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
   const [categoryFilter,setCategoryFilter] = useState('');
   const [selectMode,setSelectMode] = useState(false);
   const [selectedIds,setSelectedIds] = useState([]);
+  const [confirmingDeleteId,setConfirmingDeleteId] = useState(null);
   const [deletingSelected,setDeletingSelected] = useState(false);
 
   function toggleSelect(id){
@@ -954,6 +955,7 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
   async function del(id){
     const {error} = await client.from('expenses').delete().eq('id',id);
     if(error){ showToast('Erro ao apagar'); return; }
+    setConfirmingDeleteId(null);
     reload();
   }
 
@@ -1189,10 +1191,16 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
                   </div>
                   <div style={{textAlign:'right'}}>
                     <div className="ledger-amt">{fmtBRL(Number(e.amount))}</div>
-                    {!selectMode && (
+                    {!selectMode && confirmingDeleteId!==e.id && (
                       <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
                         <span className="link" onClick={()=>startEdit(e)}>editar</span>
-                        <span className="link" style={{color:'var(--red)'}} onClick={()=>del(e.id)}>apagar</span>
+                        <span className="link" style={{color:'var(--red)'}} onClick={()=>setConfirmingDeleteId(e.id)}>apagar</span>
+                      </div>
+                    )}
+                    {!selectMode && confirmingDeleteId===e.id && (
+                      <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+                        <span className="link" onClick={()=>setConfirmingDeleteId(null)}>cancelar</span>
+                        <span className="link" style={{color:'var(--red)',fontWeight:800}} onClick={()=>del(e.id)}>confirmar?</span>
                       </div>
                     )}
                   </div>
