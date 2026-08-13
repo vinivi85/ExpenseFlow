@@ -63,7 +63,7 @@ export default async function handler(req, res) {
     const result = await syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, connections, cardById, categoryNames, defaultUser });
     if (result.error) { res.status(500).json({ error: result.error }); return; }
 
-    res.status(200).json({ ok: true, imported: result.imported });
+    res.status(200).json({ ok: true, imported: result.imported, pending: result.pending });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Erro interno' });
   }

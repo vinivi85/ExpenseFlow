@@ -22,8 +22,9 @@ export default async function handler(req, res) {
   try {
     const results = await syncAllConnections({ supabaseUrl, serviceKey, clientId, secret });
     const totalImported = results.reduce((s, r) => s + (r.imported || 0), 0);
+    const totalPending = results.reduce((s, r) => s + (r.pending || 0), 0);
     const errors = results.filter(r => r.error);
-    res.status(200).json({ ok: true, totalImported, results, hadErrors: errors.length > 0 });
+    res.status(200).json({ ok: true, totalImported, totalPending, results, hadErrors: errors.length > 0 });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Erro interno' });
   }

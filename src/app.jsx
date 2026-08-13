@@ -550,6 +550,9 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
   const [editingManualId,setEditingManualId] = useState(null);
   const [manualDraft,setManualDraft] = useState({limit:'',balance:''});
   const [savingManual,setSavingManual] = useState(false);
+  const [pendingReview,setPendingReview] = useState([]);
+  const [reviewChecks,setReviewChecks] = useState({}); // id -> bool (marcado pra importar)
+  const [confirmingReview,setConfirmingReview] = useState(false);
 
   async function loadBalances(){
     try{
@@ -559,7 +562,35 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       setBalances(data.connections||[]);
     }catch(e){ /* Plaid ainda não configurado, ignora */ }
   }
-  useEffect(()=>{ loadBalances(); },[]);
+  async function loadPendingReview(){
+    if(!client) return;
+    const {data,error} = await client.from('plaid_pending_transactions').select('*').order('date',{ascending:false});
+    if(!error) setPendingReview(data||[]);
+  }
+  useEffect(()=>{ loadBalances(); loadPendingReview(); },[]);
+
+  async function confirmReview(){
+    setConfirmingReview(true);
+    const toImport = pendingReview.filter(p=>reviewChecks[p.id]);
+    const toDiscard = pendingReview.filter(p=>!reviewChecks[p.id]);
+    if(toImport.length>0){
+      const rows = toImport.map(p=>({
+        description:p.description, amount:p.amount, category:p.category,
+        card:p.card, date:p.date, added_by:p.added_by, source:'plaid'
+      }));
+      const {error} = await client.from('expenses').insert(rows);
+      if(error){ setConfirmingReview(false); showToast('Erro: '+error.message); return; }
+    }
+    const allIds = pendingReview.map(p=>p.id);
+    if(allIds.length>0){
+      await client.from('plaid_pending_transactions').delete().in('id',allIds);
+    }
+    setConfirmingReview(false);
+    showToast(toImport.length+' importada(s), '+toDiscard.length+' descartada(s) ✓');
+    setReviewChecks({});
+    loadPendingReview();
+    if(reload) reload();
+  }
 
   async function syncAll(){
     setSyncing(true);
@@ -569,9 +600,11 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       setSyncing(false);
       if(!res.ok){ showToast('Erro ao sincronizar: '+(data.error||'')); return; }
       if(data.results.length===0){ showToast('Nenhum cartão conectado ao Plaid ainda'); return; }
-      showToast(data.totalImported+' nova(s) despesa(s) importada(s)'+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓');
+      const pendingMsg = data.totalPending>0 ? `, ${data.totalPending} pendente(s) de revisão` : '';
+      showToast(data.totalImported+' nova(s) despesa(s) importada(s)'+pendingMsg+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓');
       if(reload) reload();
       loadBalances();
+      if(loadPendingReview) loadPendingReview();
     }catch(e){
       setSyncing(false);
       showToast('Erro ao sincronizar: '+e.message);
@@ -741,6 +774,32 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       <button className="btn btn-ghost" style={{marginBottom:16}} onClick={syncAll} disabled={syncing}>
         {syncing ? <span className="spinner"></span> : '🔄 Sincronizar tudo (Plaid)'}
       </button>
+
+      {pendingReview.length>0 && (
+        <>
+          <div className="section-title">⚠️ {pendingReview.length} transação(ões) do Plaid pra revisar</div>
+          <div className="card" style={{borderColor:'var(--red)'}}>
+            <p className="muted" style={{marginBottom:12}}>Pareciam duplicatas de algo já lançado (mesma data, valor e cartão, descrição diferente). Marca as que forem despesas de verdade diferentes — o resto é descartado.</p>
+            {pendingReview.map(p=>(
+              <div className="rev-row" key={p.id}>
+                <div className="r1">
+                  <label style={{display:'flex',gap:8,alignItems:'center'}}>
+                    <input type="checkbox" checked={!!reviewChecks[p.id]} onChange={e=>setReviewChecks({...reviewChecks,[p.id]:e.target.checked})} />
+                    {p.description}
+                  </label>
+                  <span style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(Number(p.amount))}</span>
+                </div>
+                <p className="muted" style={{marginTop:4,marginBottom:0,fontSize:11.5}}>
+                  Parece com <b>"{p.matched_description}"</b> já lançada em {new Date(p.date).toLocaleDateString('pt-BR')}{p.card?' no '+p.card:''}.
+                </p>
+              </div>
+            ))}
+            <button className="btn btn-primary" style={{marginTop:8}} onClick={confirmReview} disabled={confirmingReview}>
+              {confirmingReview ? <span className="spinner"></span> : 'Confirmar (importa marcadas, descarta o resto)'}
+            </button>
+          </div>
+        </>
+      )}
 
       <div className="section-title">Por categoria</div>
       <div className="card">
@@ -1735,7 +1794,8 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
       const data = await res.json();
       setSyncingCardId(null);
       if(!res.ok){ showToast('Erro ao sincronizar: '+(data.error||'')); return; }
-      showToast('"'+cardName+'": '+data.imported+' nova(s) despesa(s) importada(s) ✓');
+      const pendingMsg = data.pending>0 ? `, ${data.pending} pendente(s) de revisão` : '';
+      showToast('"'+cardName+'": '+data.imported+' nova(s) despesa(s) importada(s)'+pendingMsg+' ✓');
       loadPlaidStatus();
       if(reloadExpenses) reloadExpenses();
     }catch(e){
@@ -2181,6 +2241,29 @@ create table if not exists plaid_items (
 alter table plaid_items enable row level security;
 
 alter table plaid_connections add column if not exists item_ref uuid references plaid_items(id) on delete cascade;
+
+-- Transações vindas de sincronização automática do Plaid (cron, "Sincronizar tudo") que
+-- parecem duplicatas de algo já lançado (mesma data+valor+cartão, descrição diferente).
+-- Como a sincronização roda sozinha sem tela pra perguntar na hora, ficam guardadas aqui
+-- esperando alguém revisar manualmente no app.
+create table if not exists plaid_pending_transactions (
+  id uuid primary key default uuid_generate_v4(),
+  description text not null,
+  amount numeric not null,
+  category text,
+  card text,
+  date date not null,
+  added_by text not null,
+  matched_description text,
+  created_at timestamp default now()
+);
+
+alter table plaid_pending_transactions enable row level security;
+
+create policy "anyone_select_plaid_pending" on plaid_pending_transactions for select using (true);
+create policy "anyone_insert_plaid_pending" on plaid_pending_transactions for insert with check (true);
+create policy "anyone_delete_plaid_pending" on plaid_pending_transactions for delete using (true);
+create policy "anyone_update_plaid_pending" on plaid_pending_transactions for update using (true);
 `;
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
