@@ -872,6 +872,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 function ProjectionTab({expenses,client,reload,showToast}){
   const [refreshing,setRefreshing] = useState(false);
   const [removingKey,setRemovingKey] = useState(null);
+  const [sortBy,setSortBy] = useState('date');
 
   async function refresh(){
     setRefreshing(true);
@@ -888,7 +889,10 @@ function ProjectionTab({expenses,client,reload,showToast}){
   });
   const recurringList = Object.entries(recurringMap)
     .map(([key,e])=>({key,...e}))
-    .sort((a,b)=>Number(b.amount)-Number(a.amount));
+    .sort((a,b)=>{
+      if(sortBy==='category') return (a.category||'Outros').localeCompare(b.category||'Outros') || Number(b.amount)-Number(a.amount);
+      return b.date.localeCompare(a.date); // 'date': mais recente primeiro
+    });
   const projectedTotal = recurringList.reduce((s,e)=>s+Number(e.amount),0);
 
   // Tira da projeção sem apagar nenhum lançamento — desmarca "recorrente" em TODAS as
@@ -919,7 +923,13 @@ function ProjectionTab({expenses,client,reload,showToast}){
 
       <p className="muted" style={{marginBottom:12}}>Toda despesa marcada com 🔁 "recorrente" (em "+ Gasto" ou editando um lançamento) aparece aqui automaticamente. Se alguma parou de valer — foi cancelada, ou essa foi a última vez — usa "remover" pra tirar da lista sem apagar o histórico.</p>
 
-      <div className="section-title">Fixas ({recurringList.length})</div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <div className="section-title" style={{margin:0}}>Fixas ({recurringList.length})</div>
+        <select value={sortBy} onChange={ev=>setSortBy(ev.target.value)} style={{width:'auto',padding:'6px 8px',fontSize:12.5}}>
+          <option value="date">Ordenar: Data</option>
+          <option value="category">Ordenar: Categoria</option>
+        </select>
+      </div>
       <div className="card">
         {recurringList.length===0 && <div className="empty"><span className="big">🔁</span>Nenhuma despesa marcada como recorrente ainda. Marca uma em "+ Gasto" ou editando um lançamento.</div>}
         {recurringList.map(e=>(
