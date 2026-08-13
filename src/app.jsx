@@ -871,13 +871,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
 function ProjectionTab({expenses,client,reload,showToast}){
   const [refreshing,setRefreshing] = useState(false);
-  const [removingId,setRemovingId] = useState(null);
-  const now = new Date();
-  const thisMonthKey = now.toISOString().slice(0,7);
-  const prevMonthDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
-  const prevMonthKey = prevMonthDate.toISOString().slice(0,7);
-  const thisMonthLabel = capitalize(now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}));
-  const prevMonthLabel = capitalize(prevMonthDate.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}));
+  const [removingKey,setRemovingKey] = useState(null);
 
   async function refresh(){
     setRefreshing(true);
@@ -885,44 +879,28 @@ function ProjectionTab({expenses,client,reload,showToast}){
     setRefreshing(false);
   }
 
-  function groupByDesc(list){
-    const map = {};
-    list.forEach(e=>{
-      const key = (e.description||'').trim().toLowerCase();
-      // fica sempre com a ocorrência de data mais recente daquele mês
-      if(!map[key] || e.date>map[key].date) map[key] = e;
-    });
-    return map;
-  }
-
-  const currMap = groupByDesc(expenses.filter(e=>e.is_recurring && (e.date||'').slice(0,7)===thisMonthKey));
-  const prevMap = groupByDesc(expenses.filter(e=>e.is_recurring && (e.date||'').slice(0,7)===prevMonthKey));
-
-  const confirmed = [];   // marcada como recorrente nos dois meses -> entra na projeção
-  const newOnly = [];     // só marcada esse mês, ainda sem confirmar padrão
-  const stoppedOnly = []; // marcada mês passado mas não repetiu esse mês
-
-  Object.keys(currMap).forEach(key=>{
-    if(prevMap[key]) confirmed.push(currMap[key]);
-    else newOnly.push(currMap[key]);
+  // Agrupa todas as despesas marcadas como recorrente por descrição, ficando com a
+  // ocorrência mais recente de cada uma (usada como valor previsto pro próximo mês).
+  const recurringMap = {};
+  expenses.filter(e=>e.is_recurring).forEach(e=>{
+    const key = (e.description||'').trim().toLowerCase();
+    if(!recurringMap[key] || e.date>recurringMap[key].date) recurringMap[key] = e;
   });
-  Object.keys(prevMap).forEach(key=>{
-    if(!currMap[key]) stoppedOnly.push(prevMap[key]);
-  });
+  const recurringList = Object.entries(recurringMap)
+    .map(([key,e])=>({key,...e}))
+    .sort((a,b)=>Number(b.amount)-Number(a.amount));
+  const projectedTotal = recurringList.reduce((s,e)=>s+Number(e.amount),0);
 
-  confirmed.sort((a,b)=>Number(b.amount)-Number(a.amount));
-  const projectedTotal = confirmed.reduce((s,e)=>s+Number(e.amount),0);
-
-  // Tira da projeção sem apagar o lançamento — só desmarca "recorrente" nessa
-  // despesa e na equivalente do mês anterior, pra não voltar a contar sozinha depois.
-  async function removeFromProjection(descKey, currId){
-    setRemovingId(currId);
-    const prevId = prevMap[descKey]?.id;
-    const ids = [currId, prevId].filter(Boolean);
-    const {error} = await client.from('expenses').update({ is_recurring:false }).in('id', ids);
-    setRemovingId(null);
+  // Tira da projeção sem apagar nenhum lançamento — desmarca "recorrente" em TODAS as
+  // ocorrências passadas com essa mesma descrição, pra parar de contar pro futuro
+  // (uso: foi cancelada, ou essa foi a última vez que teve).
+  async function removeFromProjection(key,description){
+    setRemovingKey(key);
+    const matchIds = expenses.filter(e=>(e.description||'').trim().toLowerCase()===key).map(e=>e.id);
+    const {error} = await client.from('expenses').update({ is_recurring:false }).in('id', matchIds);
+    setRemovingKey(null);
     if(error){ showToast('Erro: '+error.message); return; }
-    showToast('Desmarcada como recorrente ✓');
+    showToast('"'+description+'" removida da projeção ✓');
     if(reload) reload();
   }
 
@@ -934,65 +912,35 @@ function ProjectionTab({expenses,client,reload,showToast}){
         </button>
       </div>
       <div className="card" style={{textAlign:'center',padding:'22px 16px'}}>
-        <div className="muted" style={{textTransform:'uppercase',fontSize:11,letterSpacing:'0.06em',marginBottom:6}}>Projeção pro próximo mês</div>
+        <div className="muted" style={{textTransform:'uppercase',fontSize:11,letterSpacing:'0.06em',marginBottom:6}}>Gastos fixos por mês</div>
         <div className="hero-num" style={{fontSize:36}}>{fmtBRL(projectedTotal)}</div>
-        <div className="muted" style={{marginTop:4,fontSize:12}}>com base em {confirmed.length} despesa{confirmed.length!==1?'s':''} recorrente{confirmed.length!==1?'s':''} confirmada{confirmed.length!==1?'s':''} ({prevMonthLabel} e {thisMonthLabel})</div>
+        <div className="muted" style={{marginTop:4,fontSize:12}}>com base em {recurringList.length} despesa{recurringList.length!==1?'s':''} marcada{recurringList.length!==1?'s':''} como recorrente</div>
       </div>
 
-      <div className="section-title">Confirmadas</div>
+      <p className="muted" style={{marginBottom:12}}>Toda despesa marcada com 🔁 "recorrente" (em "+ Gasto" ou editando um lançamento) aparece aqui automaticamente. Se alguma parou de valer — foi cancelada, ou essa foi a última vez — usa "remover" pra tirar da lista sem apagar o histórico.</p>
+
+      <div className="section-title">Fixas ({recurringList.length})</div>
       <div className="card">
-        {confirmed.length===0 && <div className="empty"><span className="big">🔁</span>Nenhuma despesa marcada como recorrente nos dois últimos meses ainda. Marca uma despesa como recorrente em "+ Gasto" ou editando um lançamento.</div>}
-        {confirmed.map(e=>{
-          const key = (e.description||'').trim().toLowerCase();
-          return (
-            <div className="ledger-row" key={e.id}>
-              <div>
-                <div className="ledger-desc">{e.description}</div>
-                <div className="ledger-meta">
-                  <span className="tag">{e.category||'Outros'}</span>
-                  {e.card && <span className="tag">{e.card}</span>}
-                </div>
-              </div>
-              <div style={{textAlign:'right'}}>
-                <div className="ledger-amt">{fmtBRL(Number(e.amount))}</div>
-                <span className="link" style={{color:'var(--amber)'}} onClick={()=>removeFromProjection(key,e.id)}>
-                  {removingId===e.id ? <span className="spinner"></span> : 'desmarcar'}
-                </span>
+        {recurringList.length===0 && <div className="empty"><span className="big">🔁</span>Nenhuma despesa marcada como recorrente ainda. Marca uma em "+ Gasto" ou editando um lançamento.</div>}
+        {recurringList.map(e=>(
+          <div className="ledger-row" key={e.key}>
+            <div>
+              <div className="ledger-desc">{e.description}</div>
+              <div className="ledger-meta">
+                <span className="tag">{e.category||'Outros'}</span>
+                {e.card && <span className="tag">{e.card}</span>}
+                última vez: {new Date(e.date).toLocaleDateString('pt-BR')}
               </div>
             </div>
-          );
-        })}
+            <div style={{textAlign:'right'}}>
+              <div className="ledger-amt">{fmtBRL(Number(e.amount))}</div>
+              <span className="link" style={{color:'var(--red)'}} onClick={()=>removeFromProjection(e.key,e.description)}>
+                {removingKey===e.key ? <span className="spinner"></span> : 'remover'}
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
-
-      {newOnly.length>0 && (
-        <>
-          <div className="section-title">Novas esse mês (ainda não confirmadas)</div>
-          <div className="card">
-            <p className="muted" style={{marginBottom:10}}>Marcadas como recorrente em {thisMonthLabel}, mas ainda não tinham aparecido em {prevMonthLabel}. Se repetirem no mês que vem, entram na projeção.</p>
-            {newOnly.map(e=>(
-              <div className="ledger-row" key={e.id}>
-                <div className="ledger-desc">{e.description}</div>
-                <div className="ledger-amt">{fmtBRL(Number(e.amount))}</div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {stoppedOnly.length>0 && (
-        <>
-          <div className="section-title">Não repetiram esse mês</div>
-          <div className="card">
-            <p className="muted" style={{marginBottom:10}}>Estavam marcadas como recorrente em {prevMonthLabel}, mas não apareceram (ainda) em {thisMonthLabel}. Pode ser que tenham parado, ou que só ainda não foram lançadas/importadas.</p>
-            {stoppedOnly.map(e=>(
-              <div className="ledger-row" key={e.id}>
-                <div className="ledger-desc">{e.description}</div>
-                <div className="ledger-amt" style={{color:'var(--muted)'}}>{fmtBRL(Number(e.amount))}</div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
     </div>
   );
 }
