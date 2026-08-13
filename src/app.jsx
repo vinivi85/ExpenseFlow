@@ -1128,13 +1128,13 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
           )}
         </div>
       )}
-      <div style={{position:'relative',marginBottom:14}}>
-        <span style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',fontSize:14,color:'var(--muted)',pointerEvents:'none'}}>🔍</span>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+        <span style={{fontSize:16,flexShrink:0}}>🔍</span>
         <input
           value={searchText}
           onChange={ev=>setSearchText(ev.target.value)}
           placeholder="Buscar por descrição, categoria, cartão ou responsável…"
-          style={{paddingLeft:32}}
+          style={{flex:1}}
         />
       </div>
       {confirmingClear && (
