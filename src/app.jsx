@@ -347,7 +347,7 @@ function App(){
   const [toast,setToast] = useState(null);
   const client = useMemo(()=>getClient(cfg),[cfg.url,cfg.key]);
 
-  function showToast(msg){ setToast(msg); setTimeout(()=>setToast(null),2600); }
+  function showToast(msg, duration){ setToast(msg); setTimeout(()=>setToast(null),duration||2600); }
 
   async function loadExpenses(){
     if(!client) return;
@@ -410,14 +410,15 @@ function App(){
   const availableMonths = [...new Set([thisMonthKey, ...expenses.map(e=>(e.date||'').slice(0,7)).filter(Boolean)])].sort().reverse();
   const availableYears = [...new Set([thisYear, ...expenses.map(e=>(e.date||'').slice(0,4)).filter(Boolean)])].sort().reverse();
 
-  const periodExpenses = expenses.filter(e=>{
-    const d = e.date||'';
+  function dateMatchesPeriod(d){
+    d = d||'';
     if(period==='7d') return d>=daysAgoKey(7) && d<=todayKey;
     if(period==='15d') return d>=daysAgoKey(15) && d<=todayKey;
     if(period==='month') return d.slice(0,7)===selectedMonth;
     if(period==='year') return d.slice(0,4)===selectedYear;
     return true; // 'all'
-  });
+  }
+  const periodExpenses = expenses.filter(e=>dateMatchesPeriod(e.date));
   const periodLabels = {
     '7d':'nos últimos 7 dias',
     '15d':'nos últimos 15 dias',
@@ -504,7 +505,7 @@ function App(){
 
       <div className="content">
         {tab==='dash' && <Dashboard catList={catList} maxCat={maxCat} cardList={cardList} maxCard={maxCard} descList={descList} maxDesc={maxDesc} periodTotal={periodTotal} cards={cards} client={client} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} />}
-        {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} periodLabel={periodLabels[period]} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
+        {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} periodLabel={periodLabels[period]} dateMatchesPeriod={dateMatchesPeriod} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='proj' && <ProjectionTab expenses={expenses} client={client} reload={loadExpenses} showToast={showToast} />}
         {tab==='add' && <AddTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
         {tab==='pdf' && <PdfTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} expenses={expenses} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
@@ -919,7 +920,7 @@ function ProjectionTab({expenses,client,reload,showToast}){
   );
 }
 
-function ListTab({expenses,totalCount,periodLabel,loading,client,categories,users,cards,reload,showToast}){
+function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,client,categories,users,cards,reload,showToast}){
   const [confirmingClear,setConfirmingClear] = useState(false);
   const [clearing,setClearing] = useState(false);
   const [editingId,setEditingId] = useState(null);
@@ -1004,7 +1005,9 @@ function ListTab({expenses,totalCount,periodLabel,loading,client,categories,user
     }
 
     setSaving(false);
-    showToast('Lançamento atualizado'+(bulkCount>0?' + '+bulkCount+' outro(s) igual(is)':'')+' ✓');
+    const stillVisible = !dateMatchesPeriod || dateMatchesPeriod(draft.date);
+    const baseMsg = 'Lançamento atualizado'+(bulkCount>0?' + '+bulkCount+' outro(s) igual(is)':'')+' ✓';
+    showToast(stillVisible ? baseMsg : baseMsg+' — saiu do filtro de período ativo (troca pra "Tudo" pra ver)', stillVisible?2600:4500);
     setEditingId(null); setDraft(null);
     reload();
   }
