@@ -891,7 +891,10 @@ function ProjectionTab({expenses,client,reload,showToast}){
     .map(([key,e])=>({key,...e}))
     .sort((a,b)=>{
       if(sortBy==='category') return (a.category||'Outros').localeCompare(b.category||'Outros') || Number(b.amount)-Number(a.amount);
-      return b.date.localeCompare(a.date); // 'date': mais recente primeiro
+      // 'date': ordena pelo DIA do mês (vence primeiro no mês vem primeiro), ignora mês/ano
+      const dayA = parseInt((a.date||'').slice(8,10),10) || 0;
+      const dayB = parseInt((b.date||'').slice(8,10),10) || 0;
+      return dayA - dayB;
     });
   const projectedTotal = recurringList.reduce((s,e)=>s+Number(e.amount),0);
 
@@ -926,7 +929,7 @@ function ProjectionTab({expenses,client,reload,showToast}){
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
         <div className="section-title" style={{margin:0}}>Fixas ({recurringList.length})</div>
         <select value={sortBy} onChange={ev=>setSortBy(ev.target.value)} style={{width:'auto',padding:'6px 8px',fontSize:12.5}}>
-          <option value="date">Ordenar: Data</option>
+          <option value="date">Ordenar: Dia do mês</option>
           <option value="category">Ordenar: Categoria</option>
         </select>
       </div>
