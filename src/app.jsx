@@ -247,6 +247,24 @@ function markDuplicates(items, existingExpenses){
   });
 }
 
+// Segunda checagem: mesma data + valor + cartão/fonte, mas descrição diferente.
+// Pode ser a mesma despesa com descrição escrita de outro jeito (ex: editada manualmente antes).
+// Não marca automaticamente como duplicata exata — só avisa e deixa o usuário decidir.
+function markPossibleDuplicates(items, existingExpenses, card){
+  return items.map(it=>{
+    if(it.duplicate) return it; // já é duplicata exata, não precisa checar de novo
+    const match = (existingExpenses||[]).find(e=>{
+      const sameDate = e.date===it.date;
+      const sameAmount = Math.abs(Number(e.amount)-Number(it.amount))<0.01;
+      const sameCard = (e.card||'').trim().toLowerCase()===(card||'').trim().toLowerCase();
+      const diffDesc = (e.description||'').trim().toLowerCase()!==(it.description||'').trim().toLowerCase();
+      return sameDate && sameAmount && sameCard && diffDesc;
+    });
+    if(match) return { ...it, possibleDuplicate:true, matchedDescription:match.description, include:false };
+    return it;
+  });
+}
+
 // Controla quais arquivos já foram importados (por nome+tamanho), guardado no aparelho,
 // pra evitar reprocessar o mesmo arquivo se a pasta inteira for selecionada de novo depois.
 function loadImportedFilesLog(){
@@ -1422,7 +1440,7 @@ ${pdfText.slice(0, 30000)}`;
     setExtracting(false);
     if(succeededFiles.length>0) markFilesImported(succeededFiles);
     if(allItems.length===0){ showToast('Nenhuma transação encontrada'); return; }
-    setReviewing(markDuplicates(allItems, expenses));
+    setReviewing(markPossibleDuplicates(markDuplicates(allItems, expenses), expenses, card));
   }
 
   async function confirmSave(){
@@ -1464,10 +1482,11 @@ ${pdfText.slice(0, 30000)}`;
         </div>
         <p className="muted" style={{marginBottom:12}}>
           Desmarque o que não quiser importar e ajuste a categoria se precisar.
-          {reviewing.some(r=>r.duplicate) && <> <span style={{color:'var(--amber)'}}>{reviewing.filter(r=>r.duplicate).length} possível(is) duplicata(s)</span> já desmarcada(s) automaticamente (mesma data, descrição e valor de um lançamento já salvo).</>}
+          {reviewing.some(r=>r.duplicate) && <> <span style={{color:'var(--amber)'}}>{reviewing.filter(r=>r.duplicate).length} possível(is) duplicata(s) exata(s)</span> já desmarcada(s) automaticamente (mesma data, descrição e valor de um lançamento já salvo).</>}
+          {reviewing.some(r=>r.possibleDuplicate) && <> <span style={{color:'var(--red)'}}>{reviewing.filter(r=>r.possibleDuplicate).length} parecida(s) com algo já salvo</span> (mesma data, valor e cartão, mas descrição diferente) — confere se não é a mesma despesa antes de marcar.</>}
         </p>
         {reviewing.map((r,i)=>(
-          <div className="rev-row" key={i} style={r.duplicate?{borderColor:'var(--amber)'}:undefined}>
+          <div className="rev-row" key={i} style={r.duplicate?{borderColor:'var(--amber)'}:(r.possibleDuplicate?{borderColor:'var(--red)'}:undefined)}>
             <div className="r1">
               <label style={{display:'flex',gap:8,alignItems:'center'}}>
                 <input type="checkbox" checked={r.include} onChange={e=>{
@@ -1475,9 +1494,15 @@ ${pdfText.slice(0, 30000)}`;
                 }} />
                 {r.description}
                 {r.duplicate && <span className="tag" style={{color:'var(--amber)',borderColor:'var(--amber)'}}>duplicata</span>}
+                {r.possibleDuplicate && <span className="tag" style={{color:'var(--red)',borderColor:'var(--red)'}}>parecida?</span>}
               </label>
               <span style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(Number(r.amount))}</span>
             </div>
+            {r.possibleDuplicate && (
+              <p className="muted" style={{marginTop:4,marginBottom:0,fontSize:11.5}}>
+                Já existe <b>"{r.matchedDescription}"</b> nessa mesma data, valor e cartão. É a mesma despesa? Se for, deixa desmarcada. Se for diferente mesmo, marca a caixinha pra importar.
+              </p>
+            )}
             <div className="muted" style={{marginTop:4}}>
               {new Date(r.date).toLocaleDateString('pt-BR')}{r.sourceFile ? ' · '+r.sourceFile : ''}
               {r.added_by && users.length>1 && <> · <span style={{color:'var(--green)'}}>{r.added_by}</span></>}
