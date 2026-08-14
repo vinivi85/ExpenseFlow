@@ -880,11 +880,15 @@ function ProjectionTab({expenses,client,reload,showToast}){
     setRefreshing(false);
   }
 
-  // Agrupa todas as despesas marcadas como recorrente por descrição, ficando com a
+  // Agrupa todas as despesas marcadas como recorrente por descrição + valor, ficando com a
   // ocorrência mais recente de cada uma (usada como valor previsto pro próximo mês).
+  // Usa valor também porque comerciantes como a Apple reusam a mesma descrição genérica
+  // ("APPLE.COM/BILL") pra várias assinaturas diferentes (Music, iCloud, TV+, etc.) —
+  // só descrição juntaria assinaturas diferentes numa única linha.
+  function recKey(e){ return (e.description||'').trim().toLowerCase()+'|'+Number(e.amount).toFixed(2); }
   const recurringMap = {};
   expenses.filter(e=>e.is_recurring).forEach(e=>{
-    const key = (e.description||'').trim().toLowerCase();
+    const key = recKey(e);
     if(!recurringMap[key] || e.date>recurringMap[key].date) recurringMap[key] = e;
   });
   const recurringList = Object.entries(recurringMap)
@@ -899,11 +903,11 @@ function ProjectionTab({expenses,client,reload,showToast}){
   const projectedTotal = recurringList.reduce((s,e)=>s+Number(e.amount),0);
 
   // Tira da projeção sem apagar nenhum lançamento — desmarca "recorrente" em TODAS as
-  // ocorrências passadas com essa mesma descrição, pra parar de contar pro futuro
+  // ocorrências passadas com essa mesma descrição+valor, pra parar de contar pro futuro
   // (uso: foi cancelada, ou essa foi a última vez que teve).
   async function removeFromProjection(key,description){
     setRemovingKey(key);
-    const matchIds = expenses.filter(e=>(e.description||'').trim().toLowerCase()===key).map(e=>e.id);
+    const matchIds = expenses.filter(e=>recKey(e)===key).map(e=>e.id);
     const {error} = await client.from('expenses').update({ is_recurring:false }).in('id', matchIds);
     setRemovingKey(null);
     if(error){ showToast('Erro: '+error.message); return; }
