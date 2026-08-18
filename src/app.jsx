@@ -445,17 +445,30 @@ function App(){
     all:'no total'
   };
 
+  // Categorias marcadas como "crédito" (ex: Pagamento Efetuado) não contam como despesa —
+  // são pagamentos/estornos, não gasto. Ficam de fora das somas, mostradas à parte.
+  const creditCategoryNames = categories.filter(c=>c.is_credit).map(c=>c.name);
+  const isCreditExpense = (e)=>creditCategoryNames.includes(e.category);
+
   // Quando um usuário específico está selecionado (não "Todos"), filtra tudo por ele
-  const viewExpenses = user!==ALL_VIEW ? periodExpenses.filter(e=>e.added_by===user) : periodExpenses;
+  const viewExpensesAll = user!==ALL_VIEW ? periodExpenses.filter(e=>e.added_by===user) : periodExpenses;
+  const viewExpenses = viewExpensesAll.filter(e=>!isCreditExpense(e));
+  const viewExpensesCredit = viewExpensesAll.filter(e=>isCreditExpense(e));
 
   const periodTotal = viewExpenses.reduce((s,e)=>s+Number(e.amount),0);
   const byUser = {};
-  periodExpenses.forEach(e=>{ byUser[e.added_by] = (byUser[e.added_by]||0)+Number(e.amount); });
+  periodExpenses.filter(e=>!isCreditExpense(e)).forEach(e=>{ byUser[e.added_by] = (byUser[e.added_by]||0)+Number(e.amount); });
 
   const byCat = {};
   viewExpenses.forEach(e=>{ byCat[e.category||'Outros'] = (byCat[e.category||'Outros']||0)+Number(e.amount); });
   const catList = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
   const maxCat = catList.length ? catList[0][1] : 1;
+
+  // Créditos/pagamentos ficam numa lista separada, mostrada no final, sem entrar na soma acima
+  const byCreditCat = {};
+  viewExpensesCredit.forEach(e=>{ byCreditCat[e.category||'Outros'] = (byCreditCat[e.category||'Outros']||0)+Number(e.amount); });
+  const creditCatList = Object.entries(byCreditCat).sort((a,b)=>b[1]-a[1]);
+  const creditTotal = viewExpensesCredit.reduce((s,e)=>s+Number(e.amount),0);
 
   const byCard = {};
   viewExpenses.forEach(e=>{ byCard[e.card||'Sem cartão/fonte'] = (byCard[e.card||'Sem cartão/fonte']||0)+Number(e.amount); });
@@ -473,7 +486,7 @@ function App(){
   const descList = Object.values(byDesc).sort((a,b)=>b.total-a.total);
   const maxDesc = descList.length ? descList[0].total : 1;
 
-  const listExpenses = viewExpenses;
+  const listExpenses = viewExpensesAll;
 
   if(!client){
     return <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} />;
@@ -522,7 +535,7 @@ function App(){
       </div>
 
       <div className="content">
-        {tab==='dash' && <Dashboard catList={catList} maxCat={maxCat} cardList={cardList} maxCard={maxCard} descList={descList} maxDesc={maxDesc} periodTotal={periodTotal} cards={cards} client={client} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} />}
+        {tab==='dash' && <Dashboard catList={catList} maxCat={maxCat} cardList={cardList} maxCard={maxCard} descList={descList} maxDesc={maxDesc} periodTotal={periodTotal} creditCatList={creditCatList} creditTotal={creditTotal} cards={cards} client={client} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} />}
         {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} periodLabel={periodLabels[period]} dateMatchesPeriod={dateMatchesPeriod} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='proj' && <ProjectionTab expenses={expenses} client={client} reload={loadExpenses} showToast={showToast} />}
         {tab==='add' && <AddTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
@@ -544,7 +557,7 @@ function App(){
   );
 }
 
-function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal,cards,client,reloadCards,reload,showToast}){
+function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal,creditCatList,creditTotal,cards,client,reloadCards,reload,showToast}){
   const [syncing,setSyncing] = useState(false);
   const [balances,setBalances] = useState([]);
   const [editingManualId,setEditingManualId] = useState(null);
@@ -865,6 +878,24 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
           </div>
         ))}
       </div>
+
+      {creditCatList && creditCatList.length>0 && (
+        <>
+          <div className="section-title">💳 Pagamentos / Créditos</div>
+          <div className="card">
+            <p className="muted" style={{marginBottom:10}}>Não entram na soma de despesas acima — são pagamentos/estornos, não gasto.</p>
+            {creditCatList.map(([cat,val])=>(
+              <div className="ledger-row" key={cat}>
+                <div className="ledger-desc">{cat}</div>
+                <div className="ledger-amt" style={{color:'var(--green)'}}>{fmtBRL(val)}</div>
+              </div>
+            ))}
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,paddingTop:10,marginTop:4,borderTop:'1px dashed var(--bezel)'}}>
+              <span className="muted">Total em créditos</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(creditTotal)}</b>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1639,6 +1670,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
   const [key,setKey] = useState(cfg.key||'');
   const [msg,setMsg] = useState('');
   const [newCat,setNewCat] = useState('');
+  const [newCatIsCredit,setNewCatIsCredit] = useState(false);
   const [editingId,setEditingId] = useState(null);
   const [editingName,setEditingName] = useState('');
   const [newUser,setNewUser] = useState('');
@@ -1815,10 +1847,16 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
       showToast('Essa categoria já existe'); return;
     }
     setBusy(true);
-    const {error} = await client.from('categories').insert({name});
+    const {error} = await client.from('categories').insert({name, is_credit:newCatIsCredit});
     setBusy(false);
     if(error){ showToast('Erro: '+error.message); return; }
-    setNewCat('');
+    setNewCat(''); setNewCatIsCredit(false);
+    reloadCategories();
+  }
+
+  async function toggleCategoryCredit(id, value){
+    const {error} = await client.from('categories').update({ is_credit: value }).eq('id',id);
+    if(error){ showToast('Erro: '+error.message); return; }
     reloadCategories();
   }
 
@@ -2047,23 +2085,31 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
           <div style={{fontWeight:700,marginBottom:10,fontSize:14}}>Categorias</div>
           {(categories||[]).length===0 && <p className="muted">Carregando…</p>}
           {(categories||[]).map(c=>(
-            <div key={c.id} className="ledger-row" style={{padding:'8px 2px'}}>
-              {editingId===c.id ? (
-                <input
-                  autoFocus
-                  value={editingName}
-                  onChange={e=>setEditingName(e.target.value)}
-                  onBlur={()=>saveRename(c.id)}
-                  onKeyDown={e=>{ if(e.key==='Enter') saveRename(c.id); }}
-                  style={{flex:1,marginRight:8}}
-                />
-              ) : (
-                <div className="ledger-desc" style={{cursor:'pointer'}} onClick={()=>{setEditingId(c.id);setEditingName(c.name);}}>{c.name}</div>
-              )}
-              <div style={{display:'flex',gap:14}}>
-                <span className="link" onClick={()=>{setEditingId(c.id);setEditingName(c.name);}}>editar</span>
-                <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteCategory(c.id,c.name)}>excluir</span>
+            <div key={c.id} style={{padding:'8px 2px',borderBottom:'1px dashed var(--bezel)'}}>
+              <div className="ledger-row" style={{border:'none',padding:0}}>
+                {editingId===c.id ? (
+                  <input
+                    autoFocus
+                    value={editingName}
+                    onChange={e=>setEditingName(e.target.value)}
+                    onBlur={()=>saveRename(c.id)}
+                    onKeyDown={e=>{ if(e.key==='Enter') saveRename(c.id); }}
+                    style={{flex:1,marginRight:8}}
+                  />
+                ) : (
+                  <div className="ledger-desc" style={{cursor:'pointer'}} onClick={()=>{setEditingId(c.id);setEditingName(c.name);}}>
+                    {c.name}{c.is_credit && <span className="tag" style={{marginLeft:6,color:'var(--green)'}}>💳 crédito</span>}
+                  </div>
+                )}
+                <div style={{display:'flex',gap:14}}>
+                  <span className="link" onClick={()=>{setEditingId(c.id);setEditingName(c.name);}}>editar</span>
+                  <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteCategory(c.id,c.name)}>excluir</span>
+                </div>
               </div>
+              <label style={{display:'flex',gap:6,alignItems:'center',marginTop:6,fontSize:11.5}}>
+                <input type="checkbox" checked={!!c.is_credit} onChange={e=>toggleCategoryCredit(c.id,e.target.checked)} />
+                Não contar como despesa (crédito)
+              </label>
             </div>
           ))}
           <div className="row2" style={{marginTop:12,alignItems:'flex-end'}}>
@@ -2072,7 +2118,11 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
             </div>
             <button className="btn btn-primary btn-sm" style={{flex:'0 0 auto'}} onClick={addCategory} disabled={busy}>Adicionar</button>
           </div>
-          <p className="muted" style={{marginTop:10}}>Excluir uma categoria não altera gastos já lançados com ela, só some das opções futuras.</p>
+          <label style={{display:'flex',gap:6,alignItems:'center',marginTop:8,fontSize:11.5}}>
+            <input type="checkbox" checked={newCatIsCredit} onChange={e=>setNewCatIsCredit(e.target.checked)} />
+            Nova categoria é crédito (não contar como despesa)
+          </label>
+          <p className="muted" style={{marginTop:10}}>Excluir uma categoria não altera gastos já lançados com ela, só some das opções futuras. Categorias marcadas como crédito (ex: "Pagamento Efetuado") não entram na soma de despesas — aparecem à parte no Resumo.</p>
         </div>
       )}
 
@@ -2139,6 +2189,8 @@ create table if not exists categories (
 );
 
 alter table categories enable row level security;
+
+alter table categories add column if not exists is_credit boolean default false;
 
 create policy "anyone_select_categories" on categories for select using (true);
 create policy "anyone_insert_categories" on categories for insert with check (true);
