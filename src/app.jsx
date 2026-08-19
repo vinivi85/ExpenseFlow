@@ -538,8 +538,7 @@ function App(){
         {tab==='dash' && <Dashboard catList={catList} maxCat={maxCat} cardList={cardList} maxCard={maxCard} descList={descList} maxDesc={maxDesc} periodTotal={periodTotal} creditCatList={creditCatList} creditTotal={creditTotal} cards={cards} client={client} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} />}
         {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} periodLabel={periodLabels[period]} dateMatchesPeriod={dateMatchesPeriod} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='proj' && <ProjectionTab expenses={expenses} client={client} reload={loadExpenses} showToast={showToast} />}
-        {tab==='add' && <AddTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
-        {tab==='pdf' && <PdfTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} expenses={expenses} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
+        {tab==='addimport' && <AddOrImportTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} expenses={expenses} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
         {tab==='cfg' && <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} embedded categories={categories} users={users} cards={cards} client={client} reloadCategories={loadCategories} reloadUsers={loadUsers} reloadCards={loadCards} reloadExpenses={loadExpenses} showToast={showToast} />}
       </div>
 
@@ -547,8 +546,7 @@ function App(){
         <button className={tab==='dash'?'active':''} onClick={()=>setTab('dash')}><span className="tab-icon">📊</span>Resumo</button>
         <button className={tab==='list'?'active':''} onClick={()=>setTab('list')}><span className="tab-icon">📋</span>Lanç.</button>
         <button className={tab==='proj'?'active':''} onClick={()=>setTab('proj')}><span className="tab-icon">🔁</span>Projeção</button>
-        <button className={tab==='add'?'active':''} onClick={()=>setTab('add')}><span className="tab-icon">➕</span>Gasto</button>
-        <button className={tab==='pdf'?'active':''} onClick={()=>setTab('pdf')}><span className="tab-icon">📥</span>Importar</button>
+        <button className={tab==='addimport'?'active':''} onClick={()=>setTab('addimport')}><span className="tab-icon">➕</span>Adicionar</button>
         <button className={tab==='cfg'?'active':''} onClick={()=>setTab('cfg')}><span className="tab-icon">⚙️</span>Config</button>
       </div>
 
@@ -1308,6 +1306,22 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
           <span style={{fontSize:15,color:'var(--green)'}}>{fmtBRL(filteredExpenses.reduce((s,e)=>s+Number(e.amount),0))}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+// Junta lançamento manual e importação de arquivo numa aba só, já que os dois
+// fazem a mesma coisa no fundo (adicionar despesa) — só muda a origem do dado.
+function AddOrImportTab({client,user,categories,users,cards,reloadCards,expenses,reload,showToast,setTab}){
+  const [mode,setMode] = useState('manual');
+  return (
+    <div>
+      <div className="period-picker" style={{marginBottom:16}}>
+        <button className={mode==='manual'?'active':''} onClick={()=>setMode('manual')}>✍️ Manual</button>
+        <button className={mode==='file'?'active':''} onClick={()=>setMode('file')}>📥 Arquivo (PDF/CSV/foto)</button>
+      </div>
+      {mode==='manual' && <AddTab client={client} user={user} categories={categories} users={users} cards={cards} reloadCards={reloadCards} reload={reload} showToast={showToast} setTab={setTab} />}
+      {mode==='file' && <PdfTab client={client} user={user} categories={categories} users={users} cards={cards} reloadCards={reloadCards} expenses={expenses} reload={reload} showToast={showToast} setTab={setTab} />}
     </div>
   );
 }
