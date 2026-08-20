@@ -539,6 +539,7 @@ function App(){
         {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} periodLabel={periodLabels[period]} dateMatchesPeriod={dateMatchesPeriod} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='proj' && <ProjectionTab expenses={expenses} client={client} reload={loadExpenses} showToast={showToast} />}
         {tab==='addimport' && <AddOrImportTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} expenses={expenses} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
+        {tab==='payables' && <PayablesTab client={client} cards={cards} users={userNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='cfg' && <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} embedded categories={categories} users={users} cards={cards} client={client} reloadCategories={loadCategories} reloadUsers={loadUsers} reloadCards={loadCards} reloadExpenses={loadExpenses} showToast={showToast} />}
       </div>
 
@@ -547,6 +548,7 @@ function App(){
         <button className={tab==='list'?'active':''} onClick={()=>setTab('list')}><span className="tab-icon">📋</span>Lanç.</button>
         <button className={tab==='proj'?'active':''} onClick={()=>setTab('proj')}><span className="tab-icon">🔁</span>Projeção</button>
         <button className={tab==='addimport'?'active':''} onClick={()=>setTab('addimport')}><span className="tab-icon">➕</span>Adicionar</button>
+        <button className={tab==='payables'?'active':''} onClick={()=>setTab('payables')}><span className="tab-icon">💰</span>A Pagar</button>
         <button className={tab==='cfg'?'active':''} onClick={()=>setTab('cfg')}><span className="tab-icon">⚙️</span>Config</button>
       </div>
 
@@ -1679,6 +1681,255 @@ ${pdfText.slice(0, 30000)}`;
   );
 }
 
+// Aba "A Pagar" — organiza por mês, puxa os cartões de crédito cadastrados
+// automaticamente (com saldo do Plaid/manual quando tiver) e permite adicionar
+// contas avulsas (mortgage, AT&T, etc.). Quando "Valor pago" é preenchido, cria
+// ou atualiza um lançamento com categoria "Pagamento Efetuado" (crédito).
+function PayablesTab({client,cards,users,reload,showToast}){
+  const [monthKey,setMonthKey] = useState(new Date().toISOString().slice(0,7));
+  const [rows,setRows] = useState([]);
+  const [balances,setBalances] = useState([]);
+  const [loading,setLoading] = useState(true);
+  const [savingId,setSavingId] = useState(null);
+  const [addingBill,setAddingBill] = useState(false);
+  const [newBill,setNewBill] = useState({description:'',open_amount:'',minimum_payment:'',paid_amount:''});
+
+  const monthLabel = capitalize(new Date(monthKey+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'}));
+
+  async function loadBalances(){
+    try{
+      const res = await fetch('/api/plaid-status');
+      const data = await res.json();
+      if(res.ok) setBalances(data.connections||[]);
+    }catch(e){ /* ignora */ }
+  }
+
+  async function loadRows(){
+    setLoading(true);
+    const {data,error} = await client.from('bills_to_pay').select('*').eq('month_key',monthKey).order('created_at',{ascending:true});
+    if(error){ setLoading(false); showToast('Erro: '+error.message); return; }
+
+    // Garante que todo cartão de crédito cadastrado tenha uma linha nesse mês —
+    // cria automaticamente as que ainda não existem, já com o saldo atual como sugestão.
+    const creditCards = (cards||[]).filter(c=>(c.account_type||'credit')==='credit');
+    const existingCardIds = new Set((data||[]).filter(r=>r.card_id).map(r=>r.card_id));
+    const balanceMap = {};
+    balances.forEach(b=>{ balanceMap[b.card_id]=b; });
+    const missing = creditCards.filter(c=>!existingCardIds.has(c.id));
+
+    let allRows = data||[];
+    if(missing.length>0){
+      const toInsert = missing.map(c=>{
+        const b = balanceMap[c.id];
+        const suggestedOpen = b?.status==='connected' ? b.current_balance : (c.manual_balance!=null ? c.manual_balance : null);
+        return { month_key: monthKey, card_id: c.id, description: c.name, open_amount: suggestedOpen };
+      });
+      const {data:inserted,error:insError} = await client.from('bills_to_pay').insert(toInsert).select();
+      if(!insError && inserted) allRows = [...allRows, ...inserted];
+    }
+    setRows(allRows.sort((a,b)=> (a.card_id?0:1) - (b.card_id?0:1) || new Date(a.created_at)-new Date(b.created_at)));
+    setLoading(false);
+  }
+
+  useEffect(()=>{ loadBalances(); },[]);
+  useEffect(()=>{ if(client && cards) loadRows(); },[monthKey, client, cards, balances.length]);
+
+  function changeMonth(delta){
+    const d = new Date(monthKey+'-02');
+    d.setMonth(d.getMonth()+delta);
+    setMonthKey(d.toISOString().slice(0,7));
+  }
+
+  function updateLocal(id, field, value){
+    setRows(prev=>prev.map(r=>r.id===id ? {...r,[field]:value} : r));
+  }
+
+  // Cria/atualiza/apaga o lançamento "Pagamento Efetuado" ligado a essa linha,
+  // conforme o valor pago mudou.
+  async function syncPaymentExpense(row){
+    const paid = row.paid_amount ? parseFloat(String(row.paid_amount).replace(',','.')) : 0;
+
+    if(paid>0){
+      // Garante que a categoria de crédito existe
+      let {data:cats} = await client.from('categories').select('*').ilike('name','Pagamento Efetuado');
+      let categoryName = 'Pagamento Efetuado';
+      if(!cats || cats.length===0){
+        const {data:newCat} = await client.from('categories').insert({name:categoryName, is_credit:true}).select();
+        if(!newCat || newCat.length===0) categoryName = 'Outros';
+      } else if(!cats[0].is_credit){
+        await client.from('categories').update({is_credit:true}).eq('id',cats[0].id);
+      }
+
+      const payload = {
+        description: row.description,
+        amount: paid,
+        category: categoryName,
+        card: row.card_id ? row.description : null,
+        date: row.paid_date || new Date().toISOString().slice(0,10),
+        added_by: (users&&users[0]) || 'Vinicius',
+        source: 'payment'
+      };
+
+      if(row.expense_id){
+        await client.from('expenses').update(payload).eq('id',row.expense_id);
+        return row.expense_id;
+      } else {
+        const {data:newExp,error} = await client.from('expenses').insert(payload).select();
+        if(error){ showToast('Erro ao criar pagamento: '+error.message); return null; }
+        return newExp[0].id;
+      }
+    } else if(row.expense_id){
+      // Valor pago zerado/limpo — remove o lançamento que tinha sido criado
+      await client.from('expenses').delete().eq('id',row.expense_id);
+      return null;
+    }
+    return row.expense_id;
+  }
+
+  async function saveRow(row){
+    setSavingId(row.id);
+    const expenseId = await syncPaymentExpense(row);
+    const {error} = await client.from('bills_to_pay').update({
+      description: row.description,
+      open_amount: row.open_amount===''?null:parseFloat(String(row.open_amount).replace(',','.')),
+      minimum_payment: row.minimum_payment===''?null:parseFloat(String(row.minimum_payment).replace(',','.')),
+      paid_amount: row.paid_amount===''?null:parseFloat(String(row.paid_amount).replace(',','.')),
+      paid_date: row.paid_amount ? (row.paid_date || new Date().toISOString().slice(0,10)) : null,
+      expense_id: expenseId
+    }).eq('id',row.id);
+    setSavingId(null);
+    if(error){ showToast('Erro: '+error.message); return; }
+    showToast('Salvo ✓');
+    if(reload) reload();
+    loadRows();
+  }
+
+  async function deleteBill(row){
+    if(row.expense_id) await client.from('expenses').delete().eq('id',row.expense_id);
+    await client.from('bills_to_pay').delete().eq('id',row.id);
+    showToast('Removida');
+    loadRows();
+    if(reload) reload();
+  }
+
+  async function addStandaloneBill(){
+    if(!newBill.description.trim()){ showToast('Preencha a descrição'); return; }
+    const {error} = await client.from('bills_to_pay').insert({
+      month_key: monthKey,
+      description: newBill.description.trim(),
+      open_amount: newBill.open_amount ? parseFloat(newBill.open_amount.replace(',','.')) : null,
+      minimum_payment: newBill.minimum_payment ? parseFloat(newBill.minimum_payment.replace(',','.')) : null,
+      paid_amount: newBill.paid_amount ? parseFloat(newBill.paid_amount.replace(',','.')) : null,
+      paid_date: newBill.paid_amount ? new Date().toISOString().slice(0,10) : null
+    });
+    if(error){ showToast('Erro: '+error.message); return; }
+    setNewBill({description:'',open_amount:'',minimum_payment:'',paid_amount:''});
+    setAddingBill(false);
+    loadRows();
+  }
+
+  const totals = rows.reduce((acc,r)=>{
+    const open = Number(r.open_amount)||0;
+    const paid = Number(r.paid_amount)||0;
+    acc.open += open; acc.paid += paid; acc.saldo += (open-paid);
+    return acc;
+  }, {open:0,paid:0,saldo:0});
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+        <button className="btn btn-ghost btn-sm" onClick={()=>changeMonth(-1)}>◀</button>
+        <div style={{fontWeight:800,fontSize:15}}>{monthLabel}</div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>changeMonth(1)}>▶</button>
+      </div>
+
+      {loading && <div className="empty">Carregando…</div>}
+
+      {!loading && rows.map(row=>(
+        <div key={row.id} className="card" style={{marginBottom:10}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+            {row.card_id ? (
+              <div className="ledger-desc">{row.description}</div>
+            ) : (
+              <input value={row.description} onChange={e=>updateLocal(row.id,'description',e.target.value)} onBlur={()=>saveRow(row)} style={{flex:1,marginRight:8}} />
+            )}
+            {!row.card_id && (
+              <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteBill(row)}>excluir</span>
+            )}
+          </div>
+          <div className="row2" style={{marginBottom:8}}>
+            <div className="field" style={{marginBottom:0}}>
+              <label>Valor em aberto</label>
+              <input value={row.open_amount??''} onChange={e=>updateLocal(row.id,'open_amount',e.target.value)} onBlur={()=>saveRow(row)} placeholder="0,00" inputMode="decimal" />
+            </div>
+            <div className="field" style={{marginBottom:0}}>
+              <label>Mínimo</label>
+              <input value={row.minimum_payment??''} onChange={e=>updateLocal(row.id,'minimum_payment',e.target.value)} onBlur={()=>saveRow(row)} placeholder="0,00" inputMode="decimal" />
+            </div>
+          </div>
+          <div className="row2">
+            <div className="field" style={{marginBottom:0}}>
+              <label>Valor pago</label>
+              <input value={row.paid_amount??''} onChange={e=>updateLocal(row.id,'paid_amount',e.target.value)} onBlur={()=>saveRow(row)} placeholder="0,00" inputMode="decimal" />
+            </div>
+            <div className="field" style={{marginBottom:0}}>
+              <label>Saldo</label>
+              <div className="field-display" style={{color: ((Number(row.open_amount)||0)-(Number(row.paid_amount)||0))>0 ? 'var(--amber)' : 'var(--green)'}}>
+                {fmtBRL((Number(row.open_amount)||0)-(Number(row.paid_amount)||0))}
+              </div>
+            </div>
+          </div>
+          {savingId===row.id && <p className="muted" style={{marginTop:6,fontSize:11}}>Salvando…</p>}
+        </div>
+      ))}
+
+      {!loading && (
+        <div className="card" style={{background:'var(--panel-2)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+            <span className="muted">Total em aberto</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(totals.open)}</b>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+            <span className="muted">Total pago</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(totals.paid)}</b>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+            <span className="muted">Saldo total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:totals.saldo>0?'var(--amber)':'var(--green)'}}>{fmtBRL(totals.saldo)}</b>
+          </div>
+        </div>
+      )}
+
+      {!addingBill && (
+        <button className="btn btn-ghost" style={{marginTop:6}} onClick={()=>setAddingBill(true)}>+ Adicionar conta avulsa (mortgage, AT&T, etc.)</button>
+      )}
+      {addingBill && (
+        <div className="card">
+          <div className="field">
+            <label>Descrição</label>
+            <input value={newBill.description} onChange={e=>setNewBill({...newBill,description:e.target.value})} placeholder="Ex: Mortgage, AT&T Wireless" />
+          </div>
+          <div className="row2" style={{marginBottom:8}}>
+            <div className="field" style={{marginBottom:0}}>
+              <label>Valor em aberto</label>
+              <input value={newBill.open_amount} onChange={e=>setNewBill({...newBill,open_amount:e.target.value})} placeholder="0,00" inputMode="decimal" />
+            </div>
+            <div className="field" style={{marginBottom:0}}>
+              <label>Mínimo</label>
+              <input value={newBill.minimum_payment} onChange={e=>setNewBill({...newBill,minimum_payment:e.target.value})} placeholder="0,00" inputMode="decimal" />
+            </div>
+          </div>
+          <div className="field">
+            <label>Valor pago</label>
+            <input value={newBill.paid_amount} onChange={e=>setNewBill({...newBill,paid_amount:e.target.value})} placeholder="0,00" inputMode="decimal" />
+          </div>
+          <div className="row2">
+            <button className="btn btn-ghost" onClick={()=>{setAddingBill(false);setNewBill({description:'',open_amount:'',minimum_payment:'',paid_amount:''});}}>Cancelar</button>
+            <button className="btn btn-primary" onClick={addStandaloneBill}>Adicionar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadCategories,reloadUsers,reloadCards,reloadExpenses,showToast}){
   const [url,setUrl] = useState(cfg.url||'');
   const [key,setKey] = useState(cfg.key||'');
@@ -2314,6 +2565,29 @@ create policy "anyone_select_plaid_pending" on plaid_pending_transactions for se
 create policy "anyone_insert_plaid_pending" on plaid_pending_transactions for insert with check (true);
 create policy "anyone_delete_plaid_pending" on plaid_pending_transactions for delete using (true);
 create policy "anyone_update_plaid_pending" on plaid_pending_transactions for update using (true);
+
+-- Contas a pagar, organizadas por mes (cartoes de credito + contas avulsas tipo
+-- mortgage, AT&T, etc.) O expense_id liga com o lancamento criado quando o
+-- valor pago e preenchido, pra atualizar em vez de duplicar.
+create table if not exists bills_to_pay (
+  id uuid primary key default uuid_generate_v4(),
+  month_key text not null,
+  card_id uuid references cards(id) on delete set null,
+  description text not null,
+  open_amount numeric,
+  minimum_payment numeric,
+  paid_amount numeric,
+  paid_date date,
+  expense_id uuid references expenses(id) on delete set null,
+  created_at timestamp default now()
+);
+
+alter table bills_to_pay enable row level security;
+
+create policy "anyone_select_bills" on bills_to_pay for select using (true);
+create policy "anyone_insert_bills" on bills_to_pay for insert with check (true);
+create policy "anyone_delete_bills" on bills_to_pay for delete using (true);
+create policy "anyone_update_bills" on bills_to_pay for update using (true);
 `;
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
