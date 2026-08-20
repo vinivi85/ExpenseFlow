@@ -1841,9 +1841,14 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
 
       {loading && <div className="empty">Carregando…</div>}
 
-      {!loading && rows.map(row=>(
-        <div key={row.id} className="card" style={{marginBottom:10}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+      {!loading && rows.map(row=>{
+        const isConnected = row.card_id && balances.some(b=>b.card_id===row.card_id && b.status==='connected');
+        return (
+        <div key={row.id} className="card" style={{marginBottom:10,position:'relative'}}>
+          {isConnected && (
+            <span style={{position:'absolute',top:10,right:10,fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff'}}>PLAID</span>
+          )}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,paddingRight:isConnected?54:0}}>
             {row.card_id ? (
               <div className="ledger-desc">{row.description}</div>
             ) : (
@@ -1887,7 +1892,8 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             )
           )}
         </div>
-      ))}
+        );
+      })}
 
       {!loading && (
         <div className="card" style={{background:'var(--panel-2)'}}>
