@@ -539,7 +539,7 @@ function App(){
         {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} periodLabel={periodLabels[period]} dateMatchesPeriod={dateMatchesPeriod} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='proj' && <ProjectionTab expenses={expenses} client={client} reload={loadExpenses} showToast={showToast} />}
         {tab==='addimport' && <AddOrImportTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} expenses={expenses} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
-        {tab==='payables' && <PayablesTab client={client} cards={cards} users={userNames} reload={loadExpenses} showToast={showToast} />}
+        {tab==='payables' && <PayablesTab client={client} cards={cards} users={userNames} expenses={expenses} reload={loadExpenses} showToast={showToast} />}
         {tab==='cfg' && <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} embedded categories={categories} users={users} cards={cards} client={client} reloadCategories={loadCategories} reloadUsers={loadUsers} reloadCards={loadCards} reloadExpenses={loadExpenses} showToast={showToast} />}
       </div>
 
@@ -1685,7 +1685,7 @@ ${pdfText.slice(0, 30000)}`;
 // automaticamente (com saldo do Plaid/manual quando tiver) e permite adicionar
 // contas avulsas (mortgage, AT&T, etc.). Quando "Valor pago" é preenchido, cria
 // ou atualiza um lançamento com categoria "Pagamento Efetuado" (crédito).
-function PayablesTab({client,cards,users,reload,showToast}){
+function PayablesTab({client,cards,users,expenses,reload,showToast}){
   const [monthKey,setMonthKey] = useState(new Date().toISOString().slice(0,7));
   const [rows,setRows] = useState([]);
   const [balances,setBalances] = useState([]);
@@ -1746,81 +1746,77 @@ function PayablesTab({client,cards,users,reload,showToast}){
 
   // Cria/atualiza/apaga o lançamento "Pagamento Efetuado" ligado a essa linha,
   // conforme o valor pago mudou.
-  async function syncPaymentExpense(row){
+  // Não cria lançamento nenhum — o pagamento em si vai entrar sozinho via Plaid
+  // quando sincronizar (é uma transação real no extrato). Aqui só procura um
+  // lançamento já existente que bate (mesmo valor, data próxima, mesmo cartão/fonte
+  // se for o caso) e liga os dois, pra sinalizar que deu match.
+  function findMatchingExpense(row){
     const paid = row.paid_amount ? parseFloat(String(row.paid_amount).replace(',','.')) : 0;
+    if(paid<=0) return null;
+    const paidDate = row.paid_date || new Date().toISOString().slice(0,10);
+    const paidTime = new Date(paidDate).getTime();
+    const cardName = row.card_id ? row.description : null;
 
-    if(paid>0){
-      // Garante que a categoria de crédito existe
-      let {data:cats} = await client.from('categories').select('*').ilike('name','Pagamento Efetuado');
-      let categoryName = 'Pagamento Efetuado';
-      if(!cats || cats.length===0){
-        const {data:newCat} = await client.from('categories').insert({name:categoryName, is_credit:true}).select();
-        if(!newCat || newCat.length===0) categoryName = 'Outros';
-      } else if(!cats[0].is_credit){
-        await client.from('categories').update({is_credit:true}).eq('id',cats[0].id);
-      }
-
-      const payload = {
-        description: row.description,
-        amount: paid,
-        category: categoryName,
-        card: row.card_id ? row.description : null,
-        date: row.paid_date || new Date().toISOString().slice(0,10),
-        added_by: (users&&users[0]) || 'Vinicius',
-        source: 'payment'
-      };
-
-      if(row.expense_id){
-        await client.from('expenses').update(payload).eq('id',row.expense_id);
-        return row.expense_id;
-      } else {
-        const {data:newExp,error} = await client.from('expenses').insert(payload).select();
-        if(error){ showToast('Erro ao criar pagamento: '+error.message); return null; }
-        return newExp[0].id;
-      }
-    } else if(row.expense_id){
-      // Valor pago zerado/limpo — remove o lançamento que tinha sido criado
-      await client.from('expenses').delete().eq('id',row.expense_id);
-      return null;
-    }
-    return row.expense_id;
+    const candidates = (expenses||[]).filter(e=>{
+      const sameAmount = Math.abs(Number(e.amount)-paid) < 0.01;
+      if(!sameAmount) return false;
+      const diffDays = Math.abs(new Date(e.date).getTime()-paidTime) / 86400000;
+      if(diffDays > 7) return false;
+      if(cardName) return (e.card||'').trim().toLowerCase()===cardName.trim().toLowerCase();
+      // conta avulsa: sem cartão pra comparar, aceita por valor+data só
+      return true;
+    });
+    return candidates[0] || null;
   }
 
   async function saveRow(row){
     setSavingId(row.id);
-    const expenseId = await syncPaymentExpense(row);
+    const match = findMatchingExpense(row);
     const {error} = await client.from('bills_to_pay').update({
       description: row.description,
       open_amount: row.open_amount===''?null:parseFloat(String(row.open_amount).replace(',','.')),
       minimum_payment: row.minimum_payment===''?null:parseFloat(String(row.minimum_payment).replace(',','.')),
       paid_amount: row.paid_amount===''?null:parseFloat(String(row.paid_amount).replace(',','.')),
       paid_date: row.paid_amount ? (row.paid_date || new Date().toISOString().slice(0,10)) : null,
-      expense_id: expenseId
+      expense_id: match ? match.id : null
     }).eq('id',row.id);
     setSavingId(null);
     if(error){ showToast('Erro: '+error.message); return; }
-    showToast('Salvo ✓');
-    if(reload) reload();
+    showToast(match ? 'Salvo — encontrado no lançamento ✓' : 'Salvo (ainda sem lançamento correspondente)');
     loadRows();
   }
 
+  // Botão pra tentar de novo depois de sincronizar o Plaid, sem precisar reeditar o campo
+  async function recheckMatch(row){
+    setSavingId(row.id);
+    const match = findMatchingExpense(row);
+    await client.from('bills_to_pay').update({ expense_id: match ? match.id : null }).eq('id',row.id);
+    setSavingId(null);
+    showToast(match ? 'Encontrado no lançamento ✓' : 'Ainda não achou — sincroniza o Plaid e tenta de novo');
+    loadRows();
+  }
+
+
   async function deleteBill(row){
-    if(row.expense_id) await client.from('expenses').delete().eq('id',row.expense_id);
     await client.from('bills_to_pay').delete().eq('id',row.id);
     showToast('Removida');
     loadRows();
-    if(reload) reload();
   }
 
   async function addStandaloneBill(){
     if(!newBill.description.trim()){ showToast('Preencha a descrição'); return; }
+    const paidDate = newBill.paid_amount ? new Date().toISOString().slice(0,10) : null;
+    const match = newBill.paid_amount ? findMatchingExpense({
+      paid_amount: newBill.paid_amount, paid_date: paidDate, card_id: null, description: newBill.description.trim()
+    }) : null;
     const {error} = await client.from('bills_to_pay').insert({
       month_key: monthKey,
       description: newBill.description.trim(),
       open_amount: newBill.open_amount ? parseFloat(newBill.open_amount.replace(',','.')) : null,
       minimum_payment: newBill.minimum_payment ? parseFloat(newBill.minimum_payment.replace(',','.')) : null,
       paid_amount: newBill.paid_amount ? parseFloat(newBill.paid_amount.replace(',','.')) : null,
-      paid_date: newBill.paid_amount ? new Date().toISOString().slice(0,10) : null
+      paid_date: paidDate,
+      expense_id: match ? match.id : null
     });
     if(error){ showToast('Erro: '+error.message); return; }
     setNewBill({description:'',open_amount:'',minimum_payment:'',paid_amount:''});
@@ -1880,6 +1876,16 @@ function PayablesTab({client,cards,users,reload,showToast}){
             </div>
           </div>
           {savingId===row.id && <p className="muted" style={{marginTop:6,fontSize:11}}>Salvando…</p>}
+          {savingId!==row.id && row.paid_amount>0 && (
+            row.expense_id ? (
+              <p style={{marginTop:8,fontSize:11.5,color:'var(--green)'}}>✅ Encontrado no lançamento</p>
+            ) : (
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8}}>
+                <span style={{fontSize:11.5,color:'var(--amber)'}}>⏳ Aguardando lançamento correspondente</span>
+                <span className="link" onClick={()=>recheckMatch(row)}>tentar de novo</span>
+              </div>
+            )
+          )}
         </div>
       ))}
 
