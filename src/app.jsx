@@ -1693,6 +1693,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
   const [savingId,setSavingId] = useState(null);
   const [addingBill,setAddingBill] = useState(false);
   const [newBill,setNewBill] = useState({description:'',open_amount:'',minimum_payment:'',paid_amount:''});
+  const requestIdRef = useRef(0);
 
   const monthLabel = capitalize(new Date(monthKey+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'}));
 
@@ -1705,11 +1706,12 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     return [];
   }
 
-  async function loadRows(balancesData){
+  async function loadRows(balancesData, requestId){
     setLoading(true);
     const balList = balancesData || balances;
     const {data,error} = await client.from('bills_to_pay').select('*').eq('month_key',monthKey).order('created_at',{ascending:true});
     if(error){ setLoading(false); showToast('Erro: '+error.message); return; }
+    if(requestId!=null && requestIdRef.current!==requestId){ setLoading(false); return; } // superada por uma carga mais nova, não mexe em nada
 
     const balanceMap = {};
     balList.forEach(b=>{ balanceMap[b.card_id]=b; });
@@ -1729,7 +1731,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     const missing = creditCards.filter(c=>!existingByCardId[c.id]);
 
     let allRows = data||[];
-    if(missing.length>0){
+    if(missing.length>0 && (requestId==null || requestIdRef.current===requestId)){
       const toInsert = missing.map(c=>({ month_key: monthKey, card_id: c.id, description: c.name, open_amount: suggestedOpenFor(c.id) }));
       const {data:inserted,error:insError} = await client.from('bills_to_pay').insert(toInsert).select();
       if(!insError && inserted) allRows = [...allRows, ...inserted];
@@ -1755,8 +1757,10 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
   useEffect(()=>{
     async function init(){
       if(!client || !cards) return;
+      const myId = ++requestIdRef.current;
       const bals = await loadBalances();
-      await loadRows(bals);
+      if(requestIdRef.current !== myId) return; // uma carga mais nova já começou, descarta essa
+      await loadRows(bals, myId);
     }
     init();
   },[monthKey, client, cards]);
@@ -2627,6 +2631,8 @@ create policy "anyone_select_bills" on bills_to_pay for select using (true);
 create policy "anyone_insert_bills" on bills_to_pay for insert with check (true);
 create policy "anyone_delete_bills" on bills_to_pay for delete using (true);
 create policy "anyone_update_bills" on bills_to_pay for update using (true);
+
+create unique index if not exists bills_to_pay_month_card_uidx on bills_to_pay(month_key, card_id) where card_id is not null;
 `;
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
