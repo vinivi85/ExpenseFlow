@@ -721,15 +721,28 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
     const b = balanceMap[c.id];
     const connected = !!b && b.status==='connected';
     const isCredit = (c.account_type||'credit')==='credit';
-    const plaidHasData = isCredit
-      ? (connected && b.credit_limit!=null && (b.available_balance!=null || b.current_balance!=null))
-      : (connected && (b.available_balance!=null || b.current_balance!=null));
-    const hasManual = isCredit ? (c.manual_limit!=null && c.manual_balance!=null) : (c.manual_balance!=null);
-    const hasData = plaidHasData || hasManual;
-    const dotColor = hasData ? 'var(--green)' : 'var(--red)';
-    const manualAvailable = isCredit && hasManual ? (c.manual_limit - c.manual_balance) : c.manual_balance;
+
+    // Trata saldo e limite como coisas separadas — a Capital One, por exemplo, manda
+    // o saldo (current_balance) certinho via Plaid mas às vezes não manda o limite.
+    // Antes isso fazia a tela descartar o saldo ATUALIZADO só porque faltava o limite.
+    const liveBalance = connected ? b.current_balance : null;
+    const liveAvailable = connected ? b.available_balance : null;
+    const liveLimit = connected ? b.credit_limit : null;
+
+    const effectiveLimit = isCredit ? (liveLimit ?? c.manual_limit ?? null) : null;
+    const effectiveBalance = isCredit
+      ? (liveBalance ?? c.manual_balance ?? null)
+      : (liveAvailable ?? liveBalance ?? c.manual_balance ?? null);
+    const effectiveAvailable = isCredit
+      ? (liveAvailable ?? (effectiveLimit!=null && effectiveBalance!=null ? effectiveLimit-effectiveBalance : null))
+      : effectiveBalance;
+
+    const hasAnyBalanceData = effectiveBalance!=null;
+    const missingLimit = isCredit && hasAnyBalanceData && effectiveLimit==null;
+    const dotColor = hasAnyBalanceData ? 'var(--green)' : 'var(--red)';
     const isEditing = editingManualId===c.id;
-    const showManualLink = isCredit ? true : !plaidHasData;
+    const balanceIsLive = isCredit ? liveBalance!=null : (liveAvailable!=null || liveBalance!=null);
+    const lastUpdatedAt = balanceIsLive ? b.balance_updated_at : c.manual_balance_updated_at;
 
     return (
       <div key={c.id} style={{padding:'10px 2px',borderBottom:'1px dashed var(--bezel)'}}>
@@ -750,11 +763,10 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
         {!isEditing && (
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
             <div className="ledger-meta">
-              {plaidHasData && isCredit && <>Disponível: <b style={{color:'var(--green)'}}>{fmtBRL(b.available_balance||0)}</b> de {fmtBRL(b.credit_limit)}</>}
-              {plaidHasData && !isCredit && <>Saldo disponível</>}
-              {!plaidHasData && hasManual && isCredit && <>Disponível: <b style={{color:'var(--amber)'}}>{fmtBRL(manualAvailable)}</b> de {fmtBRL(c.manual_limit)}</>}
-              {!plaidHasData && hasManual && !isCredit && <>Saldo (manual)</>}
-              {!plaidHasData && !hasManual && <>Sem dados de saldo{isCredit?'/limite':''} ainda</>}
+              {isCredit && hasAnyBalanceData && effectiveLimit!=null && <>Disponível: <b style={{color: liveAvailable!=null?'var(--green)':'var(--amber)'}}>{fmtBRL(effectiveAvailable||0)}</b> de {fmtBRL(effectiveLimit)}</>}
+              {isCredit && missingLimit && <>Sem limite cadastrado — <span className="link" onClick={()=>startManualEdit(c)}>adicionar</span></>}
+              {!isCredit && hasAnyBalanceData && <>Saldo disponível</>}
+              {!hasAnyBalanceData && <>Sem dados de saldo{isCredit?'/limite':''} ainda</>}
               {isCredit && (c.minimum_payment!=null || c.due_day!=null) && (
                 <div style={{marginTop:2}}>
                   {c.minimum_payment!=null && <>Mínimo: <b>{fmtBRL(c.minimum_payment)}</b></>}
@@ -764,24 +776,15 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
               )}
             </div>
             <div style={{textAlign:'right'}}>
-              {(plaidHasData || hasManual) && (
+              {hasAnyBalanceData && (
                 <div className="ledger-amt" style={{color: isCredit ? 'var(--amber)' : 'var(--green)'}}>
-                  {plaidHasData
-                    ? fmtBRL(isCredit ? (b.current_balance||0) : (b.available_balance||b.current_balance||0))
-                    : fmtBRL(isCredit ? c.manual_balance : c.manual_balance)}
+                  {fmtBRL(isCredit ? effectiveBalance : effectiveAvailable)}
                 </div>
               )}
-              {showManualLink && (
-                <span className="link" onClick={()=>startManualEdit(c)}>{(plaidHasData||hasManual)?'editar':'+ adicionar'}</span>
-              )}
-              {plaidHasData && b.balance_updated_at && (
-                <div className={isStale(b.balance_updated_at) ? undefined : "muted"} style={{fontSize:9.5,marginTop:2,color:isStale(b.balance_updated_at)?'var(--red)':undefined}}>
-                  atualizado {new Date(b.balance_updated_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}
-                </div>
-              )}
-              {!plaidHasData && hasManual && c.manual_balance_updated_at && (
-                <div className={isStale(c.manual_balance_updated_at) ? undefined : "muted"} style={{fontSize:9.5,marginTop:2,color:isStale(c.manual_balance_updated_at)?'var(--red)':undefined}}>
-                  atualizado {new Date(c.manual_balance_updated_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}
+              <span className="link" onClick={()=>startManualEdit(c)}>{hasAnyBalanceData?'editar':'+ adicionar'}</span>
+              {lastUpdatedAt && (
+                <div className={isStale(lastUpdatedAt) ? undefined : "muted"} style={{fontSize:9.5,marginTop:2,color:isStale(lastUpdatedAt)?'var(--red)':undefined}}>
+                  atualizado {new Date(lastUpdatedAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}
                 </div>
               )}
             </div>
@@ -790,21 +793,21 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
         {isEditing && (
           <div>
-            {!plaidHasData && (
-              <div className="row2" style={{marginBottom:8}}>
-                {isCredit && (
-                  <div className="field" style={{marginBottom:0}}>
-                    <label>Limite total</label>
-                    <input value={manualDraft.limit} onChange={ev=>setManualDraft({...manualDraft,limit:ev.target.value})} placeholder="0,00" inputMode="decimal" />
-                  </div>
-                )}
+            <div className="row2" style={{marginBottom:8}}>
+              {isCredit && liveLimit==null && (
+                <div className="field" style={{marginBottom:0}}>
+                  <label>Limite total</label>
+                  <input value={manualDraft.limit} onChange={ev=>setManualDraft({...manualDraft,limit:ev.target.value})} placeholder="0,00" inputMode="decimal" />
+                </div>
+              )}
+              {(isCredit ? liveBalance==null : liveAvailable==null) && (
                 <div className="field" style={{marginBottom:0}}>
                   <label>{isCredit ? 'Saldo em aberto' : 'Saldo disponível'}</label>
                   <input value={manualDraft.balance} onChange={ev=>setManualDraft({...manualDraft,balance:ev.target.value})} placeholder="0,00" inputMode="decimal" />
                 </div>
-              </div>
-            )}
-            {isCredit && !plaidHasData && (
+              )}
+            </div>
+            {liveLimit==null && liveBalance==null && isCredit && (
               <p className="muted" style={{marginBottom:8}}>Disponível calculado: <b>{manualDraft.limit && manualDraft.balance ? fmtBRL(parseFloat(manualDraft.limit.replace(',','.'))-parseFloat(manualDraft.balance.replace(',','.'))) : '—'}</b></p>
             )}
             {isCredit && (
@@ -839,18 +842,19 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
     const b = balanceMap[c.id];
     const connected = !!b && b.status==='connected';
     const isCredit = (c.account_type||'credit')==='credit';
-    const plaidHasData = isCredit
-      ? (connected && b.credit_limit!=null && (b.available_balance!=null || b.current_balance!=null))
-      : (connected && (b.available_balance!=null || b.current_balance!=null));
-    const hasManual = isCredit ? (c.manual_limit!=null && c.manual_balance!=null) : (c.manual_balance!=null);
+    const liveBalance = connected ? b.current_balance : null;
+    const liveAvailable = connected ? b.available_balance : null;
+    const liveLimit = connected ? b.credit_limit : null;
     if(isCredit){
-      if(plaidHasData) return { limit:b.credit_limit||0, owed:b.current_balance||0, available:b.available_balance||0, hasData:true };
-      if(hasManual) return { limit:c.manual_limit||0, owed:c.manual_balance||0, available:(c.manual_limit-c.manual_balance)||0, hasData:true };
-      return { limit:0, owed:0, available:0, hasData:false };
+      const limit = liveLimit ?? c.manual_limit ?? null;
+      const owed = liveBalance ?? c.manual_balance ?? null;
+      if(owed==null) return { limit:0, owed:0, available:0, hasData:false };
+      const available = liveAvailable ?? (limit!=null ? limit-owed : null) ?? 0;
+      return { limit: limit||0, owed, available, hasData:true };
     }
-    if(plaidHasData) return { balance:(b.available_balance||b.current_balance||0), hasData:true };
-    if(hasManual) return { balance:c.manual_balance||0, hasData:true };
-    return { balance:0, hasData:false };
+    const balance = liveAvailable ?? liveBalance ?? c.manual_balance ?? null;
+    if(balance==null) return { balance:0, hasData:false };
+    return { balance, hasData:true };
   }
 
   const creditCards = (cards||[]).filter(c=>(c.account_type||'credit')==='credit');
