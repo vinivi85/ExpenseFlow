@@ -626,19 +626,27 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
   function startManualEdit(c){
     setEditingManualId(c.id);
-    setManualDraft({ limit: c.manual_limit!=null?String(c.manual_limit):'', balance: c.manual_balance!=null?String(c.manual_balance):'' });
+    setManualDraft({
+      limit: c.manual_limit!=null?String(c.manual_limit):'',
+      balance: c.manual_balance!=null?String(c.manual_balance):'',
+      minimum: c.minimum_payment!=null?String(c.minimum_payment):'',
+      dueDay: c.due_day!=null?String(c.due_day):''
+    });
   }
 
   async function saveManual(cardId){
     setSavingManual(true);
     const limit = manualDraft.limit ? parseFloat(String(manualDraft.limit).replace(',','.')) : null;
     const balance = manualDraft.balance ? parseFloat(String(manualDraft.balance).replace(',','.')) : null;
+    const minimum = manualDraft.minimum ? parseFloat(String(manualDraft.minimum).replace(',','.')) : null;
+    const dueDay = manualDraft.dueDay ? Math.max(1,Math.min(31,parseInt(manualDraft.dueDay,10))) : null;
     const {error} = await client.from('cards').update({
-      manual_limit: limit, manual_balance: balance, manual_balance_updated_at: new Date().toISOString()
+      manual_limit: limit, manual_balance: balance, manual_balance_updated_at: new Date().toISOString(),
+      minimum_payment: minimum, due_day: dueDay
     }).eq('id',cardId);
     setSavingManual(false);
     if(error){ showToast('Erro: '+error.message); return; }
-    showToast('Saldo/limite atualizado ✓');
+    showToast('Salvo ✓');
     setEditingManualId(null);
     if(reloadCards) reloadCards();
   }
@@ -670,7 +678,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
     const dotColor = hasData ? 'var(--green)' : 'var(--red)';
     const manualAvailable = isCredit && hasManual ? (c.manual_limit - c.manual_balance) : c.manual_balance;
     const isEditing = editingManualId===c.id;
-    const showManualLink = !plaidHasData;
+    const showManualLink = isCredit ? true : !plaidHasData;
 
     return (
       <div key={c.id} style={{padding:'10px 2px',borderBottom:'1px dashed var(--bezel)'}}>
@@ -696,6 +704,13 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
               {!plaidHasData && hasManual && isCredit && <>Disponível: <b style={{color:'var(--amber)'}}>{fmtBRL(manualAvailable)}</b> de {fmtBRL(c.manual_limit)}</>}
               {!plaidHasData && hasManual && !isCredit && <>Saldo (manual)</>}
               {!plaidHasData && !hasManual && <>Sem dados de saldo{isCredit?'/limite':''} ainda</>}
+              {isCredit && (c.minimum_payment!=null || c.due_day!=null) && (
+                <div style={{marginTop:2}}>
+                  {c.minimum_payment!=null && <>Mínimo: <b>{fmtBRL(c.minimum_payment)}</b></>}
+                  {c.minimum_payment!=null && c.due_day!=null && ' · '}
+                  {c.due_day!=null && <>vence dia {c.due_day}</>}
+                </div>
+              )}
             </div>
             <div style={{textAlign:'right'}}>
               {(plaidHasData || hasManual) && (
@@ -706,7 +721,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
                 </div>
               )}
               {showManualLink && (
-                <span className="link" onClick={()=>startManualEdit(c)}>{hasManual?'editar':'+ adicionar'}</span>
+                <span className="link" onClick={()=>startManualEdit(c)}>{(plaidHasData||hasManual)?'editar':'+ adicionar'}</span>
               )}
               {plaidHasData && b.balance_updated_at && (
                 <div className={isStale(b.balance_updated_at) ? undefined : "muted"} style={{fontSize:9.5,marginTop:2,color:isStale(b.balance_updated_at)?'var(--red)':undefined}}>
@@ -724,20 +739,34 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
         {isEditing && (
           <div>
-            <div className="row2" style={{marginBottom:8}}>
-              {isCredit && (
+            {!plaidHasData && (
+              <div className="row2" style={{marginBottom:8}}>
+                {isCredit && (
+                  <div className="field" style={{marginBottom:0}}>
+                    <label>Limite total</label>
+                    <input value={manualDraft.limit} onChange={ev=>setManualDraft({...manualDraft,limit:ev.target.value})} placeholder="0,00" inputMode="decimal" />
+                  </div>
+                )}
                 <div className="field" style={{marginBottom:0}}>
-                  <label>Limite total</label>
-                  <input value={manualDraft.limit} onChange={ev=>setManualDraft({...manualDraft,limit:ev.target.value})} placeholder="0,00" inputMode="decimal" />
+                  <label>{isCredit ? 'Saldo em aberto' : 'Saldo disponível'}</label>
+                  <input value={manualDraft.balance} onChange={ev=>setManualDraft({...manualDraft,balance:ev.target.value})} placeholder="0,00" inputMode="decimal" />
                 </div>
-              )}
-              <div className="field" style={{marginBottom:0}}>
-                <label>{isCredit ? 'Saldo em aberto' : 'Saldo disponível'}</label>
-                <input value={manualDraft.balance} onChange={ev=>setManualDraft({...manualDraft,balance:ev.target.value})} placeholder="0,00" inputMode="decimal" />
               </div>
-            </div>
-            {isCredit && (
+            )}
+            {isCredit && !plaidHasData && (
               <p className="muted" style={{marginBottom:8}}>Disponível calculado: <b>{manualDraft.limit && manualDraft.balance ? fmtBRL(parseFloat(manualDraft.limit.replace(',','.'))-parseFloat(manualDraft.balance.replace(',','.'))) : '—'}</b></p>
+            )}
+            {isCredit && (
+              <div className="row2" style={{marginBottom:8}}>
+                <div className="field" style={{marginBottom:0}}>
+                  <label>Mínimo da fatura</label>
+                  <input value={manualDraft.minimum} onChange={ev=>setManualDraft({...manualDraft,minimum:ev.target.value})} placeholder="0,00" inputMode="decimal" />
+                </div>
+                <div className="field" style={{marginBottom:0}}>
+                  <label>Dia de vencimento</label>
+                  <input value={manualDraft.dueDay} onChange={ev=>setManualDraft({...manualDraft,dueDay:ev.target.value})} placeholder="Ex: 15" inputMode="numeric" maxLength={2} />
+                </div>
+              </div>
             )}
             <div className="row2">
               <button className="btn btn-ghost btn-sm" onClick={()=>setEditingManualId(null)} disabled={savingManual}>Cancelar</button>
@@ -1755,13 +1784,13 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     const missing = creditCards.filter(c=>!existingIds.has(c.id));
     setCheckingNew(false);
     if(missing.length===0){ showToast('Nenhum cartão novo — lista já está completa'); return; }
-    setPendingNewCards(missing.map(c=>({ id:c.id, name:c.name, suggestedOpen: suggestedOpenFor(c.id,bals), checked:true })));
+    setPendingNewCards(missing.map(c=>({ id:c.id, name:c.name, suggestedOpen: suggestedOpenFor(c.id,bals), suggestedMinimum: c.minimum_payment, checked:true })));
   }
 
   async function confirmAddNewCards(){
     const toAdd = pendingNewCards.filter(c=>c.checked);
     if(toAdd.length===0){ setPendingNewCards([]); return; }
-    const toInsert = toAdd.map(c=>({ month_key: monthKey, card_id: c.id, description: c.name, open_amount: c.suggestedOpen }));
+    const toInsert = toAdd.map(c=>({ month_key: monthKey, card_id: c.id, description: c.name, open_amount: c.suggestedOpen, minimum_payment: c.suggestedMinimum ?? null }));
     const {error} = await client.from('bills_to_pay').insert(toInsert);
     if(error){ showToast('Erro: '+error.message); return; }
     showToast(toAdd.length+' cartão(ões) adicionado(s) ✓');
@@ -2603,6 +2632,8 @@ alter table cards add column if not exists manual_limit numeric;
 alter table cards add column if not exists manual_balance numeric;
 alter table cards add column if not exists manual_balance_updated_at timestamp;
 alter table cards add column if not exists account_type text default 'credit';
+alter table cards add column if not exists minimum_payment numeric;
+alter table cards add column if not exists due_day integer;
 
 -- Conexoes com o Plaid: guarda o access_token de cada conta bancaria conectada.
 -- RLS ativado SEM nenhuma politica = ninguem com a chave publica (anon/publishable)
