@@ -2011,6 +2011,14 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     return acc;
   }, {open:0,paid:0,saldo:0,minimum:0});
 
+  // Mínimo somado direto do que está cadastrado no Resumo de cada cartão (não o que
+  // ficou salvo na linha, que pode estar desatualizado ou não ter sido preenchido ainda).
+  const resumoMinimumTotal = rows.reduce((sum,r)=>{
+    if(!r.card_id) return sum;
+    const card = (cards||[]).find(c=>c.id===r.card_id);
+    return sum + Number(card?.minimum_payment||0);
+  }, 0);
+
   // Total disponível nas contas bancárias (mesmo dado do card "Contas Bancárias" no Resumo),
   // pra ver se dá pra cobrir os mínimos desse mês.
   const bankAccountsTotal = (cards||[])
@@ -2074,7 +2082,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
           {isConnected && (
             <span style={{position:'absolute',top:10,right:10,fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff'}}>PLAID</span>
           )}
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,paddingRight:isConnected?54:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:cardMinimum!=null?2:8,paddingRight:isConnected?54:0}}>
             {row.card_id ? (
               <div className="ledger-desc">{row.description}</div>
             ) : (
@@ -2082,18 +2090,21 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             )}
             <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteBill(row)}>{row.card_id ? 'remover' : 'excluir'}</span>
           </div>
+          {cardMinimum!=null && (
+            <div className="muted" style={{fontSize:11,marginBottom:8,display:'flex',alignItems:'center',gap:4}}>
+              Mínimo {'>'} {fmtBRL(cardMinimum)}
+              {belowMinimum && (
+                <span style={{cursor:'pointer'}} onClick={()=>showToast('⚠️ Mínimo abaixo do permitido — o cadastrado no Resumo é '+fmtBRL(cardMinimum))}>⚠️</span>
+              )}
+            </div>
+          )}
           <div className="row2" style={{marginBottom:8}}>
             <div className="field" style={{marginBottom:0}}>
               <label>Valor em aberto</label>
               <input value={row.open_amount??''} onChange={e=>updateLocal(row.id,'open_amount',e.target.value)} onBlur={()=>saveRow(row)} placeholder="0,00" inputMode="decimal" />
             </div>
             <div className="field" style={{marginBottom:0}}>
-              <label style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
-                <span>Mínimo{cardMinimum!=null && <> {'>'} {fmtBRL(cardMinimum)}</>}</span>
-                {belowMinimum && (
-                  <span style={{cursor:'pointer'}} onClick={()=>showToast('⚠️ Mínimo abaixo do permitido — o cadastrado no Resumo é '+fmtBRL(cardMinimum))}>⚠️</span>
-                )}
-              </label>
+              <label>A pagar</label>
               <input
                 value={row.minimum_payment??''}
                 onChange={e=>updateLocal(row.id,'minimum_payment',e.target.value)}
@@ -2139,16 +2150,9 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
             <span className="muted">Total em aberto</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(totals.open)}</b>
           </div>
-          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
-            <span className="muted">Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(totals.minimum)}</b>
-          </div>
-          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
-            <span className="muted">Total pago</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(totals.paid)}</b>
-          </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
-            <span className="muted">Estimativa de saldo</span><b style={{fontFamily:'JetBrains Mono, monospace',color:totals.saldo>0?'var(--amber)':'var(--green)'}}>{fmtBRL(totals.saldo)}</b>
+            <span className="muted">Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(resumoMinimumTotal)}</b>
           </div>
-          <p className="muted" style={{marginTop:8,fontSize:10.5}}>A estimativa de saldo é só informativa (aberto − pago), não considera o que ainda vai entrar via Plaid.</p>
         </div>
       )}
 
