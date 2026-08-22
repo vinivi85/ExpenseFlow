@@ -630,7 +630,8 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       limit: c.manual_limit!=null?String(c.manual_limit):'',
       balance: c.manual_balance!=null?String(c.manual_balance):'',
       minimum: c.minimum_payment!=null?String(c.minimum_payment):'',
-      dueDay: c.due_day!=null?String(c.due_day):''
+      dueDay: c.due_day!=null?String(c.due_day):'',
+      dueMonth: c.due_month!=null?String(c.due_month):''
     });
   }
 
@@ -640,9 +641,10 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
     const balance = manualDraft.balance ? parseFloat(String(manualDraft.balance).replace(',','.')) : null;
     const minimum = manualDraft.minimum ? parseFloat(String(manualDraft.minimum).replace(',','.')) : null;
     const dueDay = manualDraft.dueDay ? Math.max(1,Math.min(31,parseInt(manualDraft.dueDay,10))) : null;
+    const dueMonth = manualDraft.dueMonth ? Math.max(1,Math.min(12,parseInt(manualDraft.dueMonth,10))) : null;
     const {error} = await client.from('cards').update({
       manual_limit: limit, manual_balance: balance, manual_balance_updated_at: new Date().toISOString(),
-      minimum_payment: minimum, due_day: dueDay
+      minimum_payment: minimum, due_day: dueDay, due_month: dueMonth
     }).eq('id',cardId);
     setSavingManual(false);
     if(error){ showToast('Erro: '+error.message); return; }
@@ -708,7 +710,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
                 <div style={{marginTop:2}}>
                   {c.minimum_payment!=null && <>Mínimo: <b>{fmtBRL(c.minimum_payment)}</b></>}
                   {c.minimum_payment!=null && c.due_day!=null && ' · '}
-                  {c.due_day!=null && <>vence dia {c.due_day}</>}
+                  {c.due_day!=null && <>vence {String(c.due_day).padStart(2,'0')}{c.due_month!=null && '/'+String(c.due_month).padStart(2,'0')}</>}
                 </div>
               )}
             </div>
@@ -757,16 +759,22 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
               <p className="muted" style={{marginBottom:8}}>Disponível calculado: <b>{manualDraft.limit && manualDraft.balance ? fmtBRL(parseFloat(manualDraft.limit.replace(',','.'))-parseFloat(manualDraft.balance.replace(',','.'))) : '—'}</b></p>
             )}
             {isCredit && (
-              <div className="row2" style={{marginBottom:8}}>
-                <div className="field" style={{marginBottom:0}}>
+              <>
+                <div className="field" style={{marginBottom:8}}>
                   <label>Mínimo da fatura</label>
                   <input value={manualDraft.minimum} onChange={ev=>setManualDraft({...manualDraft,minimum:ev.target.value})} placeholder="0,00" inputMode="decimal" />
                 </div>
-                <div className="field" style={{marginBottom:0}}>
-                  <label>Dia de vencimento</label>
-                  <input value={manualDraft.dueDay} onChange={ev=>setManualDraft({...manualDraft,dueDay:ev.target.value})} placeholder="Ex: 15" inputMode="numeric" maxLength={2} />
+                <div className="row2" style={{marginBottom:8}}>
+                  <div className="field" style={{marginBottom:0}}>
+                    <label>Vencimento — dia</label>
+                    <input value={manualDraft.dueDay} onChange={ev=>setManualDraft({...manualDraft,dueDay:ev.target.value})} placeholder="Ex: 15" inputMode="numeric" maxLength={2} />
+                  </div>
+                  <div className="field" style={{marginBottom:0}}>
+                    <label>Vencimento — mês</label>
+                    <input value={manualDraft.dueMonth} onChange={ev=>setManualDraft({...manualDraft,dueMonth:ev.target.value})} placeholder="Ex: 08" inputMode="numeric" maxLength={2} />
+                  </div>
                 </div>
-              </div>
+              </>
             )}
             <div className="row2">
               <button className="btn btn-ghost btn-sm" onClick={()=>setEditingManualId(null)} disabled={savingManual}>Cancelar</button>
@@ -2634,6 +2642,7 @@ alter table cards add column if not exists manual_balance_updated_at timestamp;
 alter table cards add column if not exists account_type text default 'credit';
 alter table cards add column if not exists minimum_payment numeric;
 alter table cards add column if not exists due_day integer;
+alter table cards add column if not exists due_month integer;
 
 -- Conexoes com o Plaid: guarda o access_token de cada conta bancaria conectada.
 -- RLS ativado SEM nenhuma politica = ninguem com a chave publica (anon/publishable)
