@@ -279,6 +279,30 @@ function markFilesImported(files){
   localStorage.setItem('gastos_imported_files', JSON.stringify([...keys]));
 }
 
+// Guarda o resultado da última sincronização do Plaid no aparelho (não só na memória
+// da tela), pra continuar visível mesmo trocando de aba ou fechando e abrindo o app.
+function loadSyncMsg(key){
+  try{
+    const raw = JSON.parse(localStorage.getItem(key)||'null');
+    if(!raw) return null;
+    return {...raw, at: new Date(raw.at)};
+  }catch(e){ return null; }
+}
+function saveSyncMsg(key, msg){
+  localStorage.setItem(key, JSON.stringify(msg));
+}
+function loadSyncMsgMap(key){
+  try{
+    const raw = JSON.parse(localStorage.getItem(key)||'{}');
+    const out = {};
+    Object.entries(raw).forEach(([k,v])=>{ out[k] = {...v, at:new Date(v.at)}; });
+    return out;
+  }catch(e){ return {}; }
+}
+function saveSyncMsgMap(key, map){
+  localStorage.setItem(key, JSON.stringify(map));
+}
+
 // Select de cartão/fonte com opção de cadastrar um novo direto ali, sem sair da tela
 function CardPicker({client,cards,value,onChange,reloadCards,showToast}){
   const [adding,setAdding] = useState(false);
@@ -559,7 +583,7 @@ function App(){
 
 function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal,creditCatList,creditTotal,cards,client,reloadCards,reload,showToast}){
   const [syncing,setSyncing] = useState(false);
-  const [syncResultMsg,setSyncResultMsg] = useState(null);
+  const [syncResultMsg,setSyncResultMsg] = useState(()=>loadSyncMsg('gastos_sync_msg_all'));
   const [balances,setBalances] = useState([]);
   const [editingManualId,setEditingManualId] = useState(null);
   const [manualDraft,setManualDraft] = useState({limit:'',balance:''});
@@ -606,21 +630,25 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
     if(reload) reload();
   }
 
+  function setSyncResult(msg){
+    setSyncResultMsg(msg);
+    saveSyncMsg('gastos_sync_msg_all', msg);
+  }
+
   async function syncAll(){
     setSyncing(true);
-    setSyncResultMsg(null);
     try{
       const res = await fetch('/api/plaid-sync-all', { method:'POST' });
       const data = await res.json();
       setSyncing(false);
       if(!res.ok){
         const msg = 'Erro ao sincronizar: '+(data.error||'');
-        showToast(msg); setSyncResultMsg({type:'error', text:msg, at:new Date()});
+        showToast(msg); setSyncResult({type:'error', text:msg, at:new Date(), action:'Sincronizar tudo'});
         return;
       }
       if(data.results.length===0){
         const msg = 'Nenhum cartão conectado ao Plaid ainda';
-        showToast(msg); setSyncResultMsg({type:'info', text:msg, at:new Date()});
+        showToast(msg); setSyncResult({type:'info', text:msg, at:new Date(), action:'Sincronizar tudo'});
         return;
       }
       const pendingMsg = data.totalPending>0 ? `, ${data.totalPending} pendente(s) de revisão` : '';
@@ -634,14 +662,14 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
         finalType = data.hadErrors ? 'error' : 'success';
       }
       showToast(finalMsg, balErrs.length>0?6000:2600);
-      setSyncResultMsg({type:finalType, text:finalMsg, at:new Date()});
+      setSyncResult({type:finalType, text:finalMsg, at:new Date(), action:'Sincronizar tudo'});
       if(reload) reload();
       loadBalances();
       if(loadPendingReview) loadPendingReview();
     }catch(e){
       setSyncing(false);
       const msg = 'Erro ao sincronizar: '+e.message;
-      showToast(msg); setSyncResultMsg({type:'error', text:msg, at:new Date()});
+      showToast(msg); setSyncResult({type:'error', text:msg, at:new Date(), action:'Sincronizar tudo'});
     }
   }
 
@@ -847,7 +875,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       </button>
       {syncResultMsg && (
         <p style={{fontSize:11.5,margin:'6px 0 16px',color: syncResultMsg.type==='error' ? 'var(--red)' : (syncResultMsg.type==='success' ? 'var(--green)' : 'var(--muted)')}}>
-          {syncResultMsg.text} · {syncResultMsg.at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+          <b>{syncResultMsg.action||'Sincronizar'}:</b> {syncResultMsg.text} · {syncResultMsg.at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
         </p>
       )}
       {!syncResultMsg && <div style={{marginBottom:16}}></div>}
@@ -2165,7 +2193,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
   const [plaidPending,setPlaidPending] = useState([]); // contas ainda não associadas a nenhum cartão
   const [connectingCardId,setConnectingCardId] = useState(null);
   const [syncingCardId,setSyncingCardId] = useState(null);
-  const [syncMsgByCard,setSyncMsgByCard] = useState({}); // card_id -> {type,text,at}
+  const [syncMsgByCard,setSyncMsgByCard] = useState(()=>loadSyncMsgMap('gastos_sync_msg_by_card')); // card_id -> {type,text,at}
   const [disconnectingId,setDisconnectingId] = useState(null);
   const [assignDrafts,setAssignDrafts] = useState({}); // connection_id -> {mode:'existing'|'new', cardId, newName}
   const [assigning,setAssigning] = useState(false);
@@ -2281,6 +2309,14 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
     window.history.replaceState({}, '', window.location.pathname);
   },[embedded]);
 
+  function setCardSyncResult(cardId, msg){
+    setSyncMsgByCard(prev=>{
+      const next = {...prev,[cardId]:msg};
+      saveSyncMsgMap('gastos_sync_msg_by_card', next);
+      return next;
+    });
+  }
+
   async function syncCard(cardId, cardName){
     setSyncingCardId(cardId);
     try{
@@ -2293,7 +2329,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
       if(!res.ok){
         const msg = 'Erro: '+(data.error||'');
         showToast('Erro ao sincronizar: '+(data.error||''));
-        setSyncMsgByCard(prev=>({...prev,[cardId]:{type:'error',text:msg,at:new Date()}}));
+        setCardSyncResult(cardId, {type:'error',text:msg,at:new Date(),action:'sincronizar'});
         return;
       }
       const pendingMsg = data.pending>0 ? `, ${data.pending} pendente(s) de revisão` : '';
@@ -2307,14 +2343,14 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
         finalType = 'success';
         showToast('"'+cardName+'": '+finalMsg);
       }
-      setSyncMsgByCard(prev=>({...prev,[cardId]:{type:finalType,text:finalMsg,at:new Date()}}));
+      setCardSyncResult(cardId, {type:finalType,text:finalMsg,at:new Date(),action:'sincronizar'});
       loadPlaidStatus();
       if(reloadExpenses) reloadExpenses();
     }catch(e){
       setSyncingCardId(null);
       const msg = 'Erro: '+e.message;
       showToast('Erro ao sincronizar: '+e.message);
-      setSyncMsgByCard(prev=>({...prev,[cardId]:{type:'error',text:msg,at:new Date()}}));
+      setCardSyncResult(cardId, {type:'error',text:msg,at:new Date(),action:'sincronizar'});
     }
   }
 
@@ -2328,13 +2364,19 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
       const data = await res.json();
       setSyncingCardId(null);
       setDisconnectingId(null);
-      if(!res.ok){ showToast('Erro ao desconectar: '+(data.error||'')); return; }
+      if(!res.ok){
+        showToast('Erro ao desconectar: '+(data.error||''));
+        setCardSyncResult(cardId, {type:'error',text:'Erro: '+(data.error||''),at:new Date(),action:'desconectar'});
+        return;
+      }
       showToast('"'+cardName+'" desconectado');
+      setCardSyncResult(cardId, {type:'info',text:'Desconectado com sucesso',at:new Date(),action:'desconectar'});
       loadPlaidStatus();
     }catch(e){
       setSyncingCardId(null);
       setDisconnectingId(null);
       showToast('Erro ao desconectar: '+e.message);
+      setCardSyncResult(cardId, {type:'error',text:'Erro: '+e.message,at:new Date(),action:'desconectar'});
     }
   }
 
@@ -2530,7 +2572,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
                 </div>
                 {syncMsgByCard[c.id] && (
                   <p style={{fontSize:11,margin:'6px 0 0',color: syncMsgByCard[c.id].type==='error' ? 'var(--red)' : 'var(--green)'}}>
-                    {syncMsgByCard[c.id].text} · {syncMsgByCard[c.id].at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+                    <b style={{textTransform:'capitalize'}}>{syncMsgByCard[c.id].action||'ação'}:</b> {syncMsgByCard[c.id].text} · {syncMsgByCard[c.id].at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
                   </p>
                 )}
               </div>
