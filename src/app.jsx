@@ -1694,6 +1694,8 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
   const [addingBill,setAddingBill] = useState(false);
   const [newBill,setNewBill] = useState({description:'',open_amount:'',minimum_payment:'',paid_amount:''});
   const requestIdRef = useRef(0);
+  const [checkingNew,setCheckingNew] = useState(false);
+  const [pendingNewCards,setPendingNewCards] = useState([]);
 
   const monthLabel = capitalize(new Date(monthKey+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'}));
 
@@ -1706,6 +1708,15 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     return [];
   }
 
+  function suggestedOpenFor(cardId, balList){
+    const list = balList || balances;
+    const b = list.find(x=>x.card_id===cardId);
+    const card = (cards||[]).find(c=>c.id===cardId);
+    if(b?.status==='connected' && b.current_balance!=null) return b.current_balance;
+    if(card?.manual_balance!=null) return card.manual_balance;
+    return null;
+  }
+
   async function loadRows(balancesData, requestId){
     setLoading(true);
     const balList = balancesData || balances;
@@ -1713,45 +1724,49 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     if(error){ setLoading(false); showToast('Erro: '+error.message); return; }
     if(requestId!=null && requestIdRef.current!==requestId){ setLoading(false); return; } // superada por uma carga mais nova, não mexe em nada
 
-    const balanceMap = {};
-    balList.forEach(b=>{ balanceMap[b.card_id]=b; });
-    function suggestedOpenFor(cardId){
-      const b = balanceMap[cardId];
-      const card = (cards||[]).find(c=>c.id===cardId);
-      if(b?.status==='connected' && b.current_balance!=null) return b.current_balance;
-      if(card?.manual_balance!=null) return card.manual_balance;
-      return null;
-    }
-
-    // Garante que todo cartão de crédito cadastrado tenha uma linha nesse mês —
-    // cria automaticamente as que ainda não existem, já com o saldo atual como sugestão.
-    const creditCards = (cards||[]).filter(c=>(c.account_type||'credit')==='credit');
-    const existingByCardId = {};
-    (data||[]).forEach(r=>{ if(r.card_id) existingByCardId[r.card_id]=r; });
-    const missing = creditCards.filter(c=>!existingByCardId[c.id]);
-
     let allRows = data||[];
-    if(missing.length>0 && (requestId==null || requestIdRef.current===requestId)){
-      const toInsert = missing.map(c=>({ month_key: monthKey, card_id: c.id, description: c.name, open_amount: suggestedOpenFor(c.id) }));
-      const {data:inserted,error:insError} = await client.from('bills_to_pay').insert(toInsert).select();
-      if(!insError && inserted) allRows = [...allRows, ...inserted];
-    }
 
-    // Preenche automaticamente linhas que já existiam mas ficaram sem valor em aberto
-    // (ex: card criado antes do saldo do Plaid terminar de carregar da primeira vez).
-    const toBackfill = allRows.filter(r=>r.card_id && r.open_amount==null && suggestedOpenFor(r.card_id)!=null);
+    // Preenche automaticamente linhas que já estão na lista mas ficaram sem valor em
+    // aberto (ex: card criado antes do saldo do Plaid terminar de carregar). Isso só
+    // corrige dado de linha que já existe — não adiciona cartão novo nenhum sozinho.
+    const toBackfill = allRows.filter(r=>r.card_id && r.open_amount==null && suggestedOpenFor(r.card_id,balList)!=null);
     if(toBackfill.length>0){
       await Promise.all(toBackfill.map(r=>
-        client.from('bills_to_pay').update({ open_amount: suggestedOpenFor(r.card_id) }).eq('id',r.id)
+        client.from('bills_to_pay').update({ open_amount: suggestedOpenFor(r.card_id,balList) }).eq('id',r.id)
       ));
       allRows = allRows.map(r=>{
         const bf = toBackfill.find(x=>x.id===r.id);
-        return bf ? {...r, open_amount: suggestedOpenFor(r.card_id)} : r;
+        return bf ? {...r, open_amount: suggestedOpenFor(r.card_id,balList)} : r;
       });
     }
 
     setRows(allRows.sort((a,b)=> (a.card_id?0:1) - (b.card_id?0:1) || new Date(a.created_at)-new Date(b.created_at)));
     setLoading(false);
+  }
+
+  // "Atualizar lista": procura cartões de crédito cadastrados que ainda não estão
+  // nessa lista do mês, e pergunta antes de adicionar (nunca adiciona sozinho).
+  async function checkForNewCards(){
+    setCheckingNew(true);
+    const bals = await loadBalances();
+    const {data} = await client.from('bills_to_pay').select('card_id').eq('month_key',monthKey);
+    const existingIds = new Set((data||[]).filter(r=>r.card_id).map(r=>r.card_id));
+    const creditCards = (cards||[]).filter(c=>(c.account_type||'credit')==='credit');
+    const missing = creditCards.filter(c=>!existingIds.has(c.id));
+    setCheckingNew(false);
+    if(missing.length===0){ showToast('Nenhum cartão novo — lista já está completa'); return; }
+    setPendingNewCards(missing.map(c=>({ id:c.id, name:c.name, suggestedOpen: suggestedOpenFor(c.id,bals), checked:true })));
+  }
+
+  async function confirmAddNewCards(){
+    const toAdd = pendingNewCards.filter(c=>c.checked);
+    if(toAdd.length===0){ setPendingNewCards([]); return; }
+    const toInsert = toAdd.map(c=>({ month_key: monthKey, card_id: c.id, description: c.name, open_amount: c.suggestedOpen }));
+    const {error} = await client.from('bills_to_pay').insert(toInsert);
+    if(error){ showToast('Erro: '+error.message); return; }
+    showToast(toAdd.length+' cartão(ões) adicionado(s) ✓');
+    setPendingNewCards([]);
+    loadRows(balances);
   }
 
   useEffect(()=>{
@@ -1870,6 +1885,29 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
         <button className="btn btn-ghost btn-sm" onClick={()=>changeMonth(1)}>▶</button>
       </div>
 
+      <button className="btn btn-ghost" style={{marginBottom:16}} onClick={checkForNewCards} disabled={checkingNew}>
+        {checkingNew ? <span className="spinner"></span> : '🔄 Atualizar lista'}
+      </button>
+
+      {pendingNewCards.length>0 && (
+        <div className="card" style={{borderColor:'var(--green)'}}>
+          <div style={{fontWeight:700,marginBottom:6}}>{pendingNewCards.length} cartão(ões) novo(s) encontrado(s)</div>
+          <p className="muted" style={{marginBottom:10}}>Não estão nessa lista ainda. Marca os que quiser adicionar em {monthLabel}.</p>
+          {pendingNewCards.map((c,i)=>(
+            <label key={c.id} style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}>
+              <input type="checkbox" checked={c.checked} onChange={e=>{
+                const cp=[...pendingNewCards]; cp[i]={...cp[i],checked:e.target.checked}; setPendingNewCards(cp);
+              }} />
+              {c.name}{c.suggestedOpen!=null && <span className="muted" style={{marginLeft:6}}>({fmtBRL(c.suggestedOpen)})</span>}
+            </label>
+          ))}
+          <div className="row2">
+            <button className="btn btn-ghost" onClick={()=>setPendingNewCards([])}>Ignorar</button>
+            <button className="btn btn-primary" onClick={confirmAddNewCards}>Adicionar selecionados</button>
+          </div>
+        </div>
+      )}
+
       {loading && <div className="empty">Carregando…</div>}
 
       {!loading && rows.map(row=>{
@@ -1885,9 +1923,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             ) : (
               <input value={row.description} onChange={e=>updateLocal(row.id,'description',e.target.value)} onBlur={()=>saveRow(row)} style={{flex:1,marginRight:8}} />
             )}
-            {!row.card_id && (
-              <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteBill(row)}>excluir</span>
-            )}
+            <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteBill(row)}>{row.card_id ? 'remover' : 'excluir'}</span>
           </div>
           <div className="row2" style={{marginBottom:8}}>
             <div className="field" style={{marginBottom:0}}>
