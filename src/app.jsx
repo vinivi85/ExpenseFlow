@@ -214,6 +214,14 @@ function extractJson(text){
 function fmtBRL(n){
   return (n<0?'-':'') + 'R$ ' + Math.abs(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
 }
+// Formata um campo numérico pra sempre ter duas casas decimais (0.00) — usado no
+// blur dos campos de valor, pra não interferir na digitação em si.
+function fmt2(v){
+  if(v===null || v===undefined || v==='') return '';
+  const n = Number(String(v).replace(',','.'));
+  if(isNaN(n)) return '';
+  return n.toFixed(2);
+}
 function capitalize(s){ return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
 function initials(name){
   const parts = (name||'').trim().split(/\s+/).filter(Boolean);
@@ -797,13 +805,13 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
               {isCredit && liveLimit==null && (
                 <div className="field" style={{marginBottom:0}}>
                   <label>Limite total</label>
-                  <input value={manualDraft.limit} onChange={ev=>setManualDraft({...manualDraft,limit:ev.target.value})} placeholder="0,00" inputMode="decimal" />
+                  <input value={manualDraft.limit} onChange={ev=>setManualDraft({...manualDraft,limit:ev.target.value})} onBlur={()=>setManualDraft(d=>({...d,limit:fmt2(d.limit)}))} placeholder="0,00" inputMode="decimal" />
                 </div>
               )}
               {(isCredit ? liveBalance==null : liveAvailable==null) && (
                 <div className="field" style={{marginBottom:0}}>
                   <label>{isCredit ? 'Saldo em aberto' : 'Saldo disponível'}</label>
-                  <input value={manualDraft.balance} onChange={ev=>setManualDraft({...manualDraft,balance:ev.target.value})} placeholder="0,00" inputMode="decimal" />
+                  <input value={manualDraft.balance} onChange={ev=>setManualDraft({...manualDraft,balance:ev.target.value})} onBlur={()=>setManualDraft(d=>({...d,balance:fmt2(d.balance)}))} placeholder="0,00" inputMode="decimal" />
                 </div>
               )}
             </div>
@@ -814,7 +822,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
               <>
                 <div className="field" style={{marginBottom:8}}>
                   <label>Mínimo da fatura</label>
-                  <input value={manualDraft.minimum} onChange={ev=>setManualDraft({...manualDraft,minimum:ev.target.value})} placeholder="0,00" inputMode="decimal" />
+                  <input value={manualDraft.minimum} onChange={ev=>setManualDraft({...manualDraft,minimum:ev.target.value})} onBlur={()=>setManualDraft(d=>({...d,minimum:fmt2(d.minimum)}))} placeholder="0,00" inputMode="decimal" />
                 </div>
                 <div className="row2" style={{marginBottom:8}}>
                   <div className="field" style={{marginBottom:0}}>
@@ -1321,7 +1329,7 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
                       </label>
                     )}
                     <div className="row2" style={{marginBottom:8}}>
-                      <input value={draft.amount} onChange={ev=>setDraft({...draft,amount:ev.target.value})} placeholder="Valor" inputMode="decimal" />
+                      <input value={draft.amount} onChange={ev=>setDraft({...draft,amount:ev.target.value})} onBlur={()=>setDraft(d=>({...d,amount:fmt2(d.amount)}))} placeholder="Valor" inputMode="decimal" />
                       <DateField value={draft.date} onChange={d=>setDraft({...draft,date:d})} />
                     </div>
                     <div className="row2" style={{marginBottom:8}}>
@@ -1489,7 +1497,7 @@ function AddTab({client,user,categories,users,cards,reloadCards,reload,showToast
           </div>
           <div className="field">
             <label>Valor (R$)</label>
-            <input value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0,00" inputMode="decimal" />
+            <input value={amount} onChange={e=>setAmount(e.target.value)} onBlur={()=>setAmount(a=>fmt2(a))} placeholder="0,00" inputMode="decimal" />
           </div>
         </div>
         <div className="field">
@@ -1917,6 +1925,15 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     setRows(prev=>prev.map(r=>r.id===id ? {...r,[field]:value} : r));
   }
 
+  // Normaliza um campo de valor pra duas casas decimais (0.00) quando sai do campo,
+  // e já salva com o valor formatado.
+  function blurAmount(row, field){
+    const formatted = fmt2(row[field]);
+    const updated = {...row, [field]: formatted};
+    setRows(prev=>prev.map(r=>r.id===row.id ? updated : r));
+    saveRow(updated);
+  }
+
   // Cria/atualiza/apaga o lançamento "Pagamento Efetuado" ligado a essa linha,
   // conforme o valor pago mudou.
   // Não cria lançamento nenhum — o pagamento em si vai entrar sozinho via Plaid
@@ -2109,14 +2126,14 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
           <div className="row2" style={{marginBottom:8}}>
             <div className="field" style={{marginBottom:0}}>
               <label>Valor em aberto</label>
-              <input value={row.open_amount??''} onChange={e=>updateLocal(row.id,'open_amount',e.target.value)} onBlur={()=>saveRow(row)} placeholder="0,00" inputMode="decimal" />
+              <input value={row.open_amount??''} onChange={e=>updateLocal(row.id,'open_amount',e.target.value)} onBlur={()=>blurAmount(row,'open_amount')} placeholder="0,00" inputMode="decimal" />
             </div>
             <div className="field" style={{marginBottom:0}}>
               <label>A pagar</label>
               <input
                 value={row.minimum_payment??''}
                 onChange={e=>updateLocal(row.id,'minimum_payment',e.target.value)}
-                onBlur={()=>saveRow(row)}
+                onBlur={()=>blurAmount(row,'minimum_payment')}
                 placeholder="0,00"
                 inputMode="decimal"
                 style={belowMinimum ? {borderColor:'var(--red)',color:'var(--red)'} : undefined}
@@ -2126,7 +2143,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
           <div className="row2">
             <div className="field" style={{marginBottom:0}}>
               <label>Valor pago</label>
-              <input value={row.paid_amount??''} onChange={e=>updateLocal(row.id,'paid_amount',e.target.value)} onBlur={()=>saveRow(row)} placeholder="0,00" inputMode="decimal" />
+              <input value={row.paid_amount??''} onChange={e=>updateLocal(row.id,'paid_amount',e.target.value)} onBlur={()=>blurAmount(row,'paid_amount')} placeholder="0,00" inputMode="decimal" />
             </div>
             <div className="field" style={{marginBottom:0}}>
               <label>Saldo</label>
@@ -2196,16 +2213,16 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
           <div className="row2" style={{marginBottom:8}}>
             <div className="field" style={{marginBottom:0}}>
               <label>Valor em aberto</label>
-              <input value={newBill.open_amount} onChange={e=>setNewBill({...newBill,open_amount:e.target.value})} placeholder="0,00" inputMode="decimal" />
+              <input value={newBill.open_amount} onChange={e=>setNewBill({...newBill,open_amount:e.target.value})} onBlur={()=>setNewBill(nb=>({...nb,open_amount:fmt2(nb.open_amount)}))} placeholder="0,00" inputMode="decimal" />
             </div>
             <div className="field" style={{marginBottom:0}}>
               <label>Mínimo</label>
-              <input value={newBill.minimum_payment} onChange={e=>setNewBill({...newBill,minimum_payment:e.target.value})} placeholder="0,00" inputMode="decimal" />
+              <input value={newBill.minimum_payment} onChange={e=>setNewBill({...newBill,minimum_payment:e.target.value})} onBlur={()=>setNewBill(nb=>({...nb,minimum_payment:fmt2(nb.minimum_payment)}))} placeholder="0,00" inputMode="decimal" />
             </div>
           </div>
           <div className="field">
             <label>Valor pago</label>
-            <input value={newBill.paid_amount} onChange={e=>setNewBill({...newBill,paid_amount:e.target.value})} placeholder="0,00" inputMode="decimal" />
+            <input value={newBill.paid_amount} onChange={e=>setNewBill({...newBill,paid_amount:e.target.value})} onBlur={()=>setNewBill(nb=>({...nb,paid_amount:fmt2(nb.paid_amount)}))} placeholder="0,00" inputMode="decimal" />
           </div>
           <div className="row2">
             <button className="btn btn-ghost" onClick={()=>{setAddingBill(false);setNewBill({description:'',open_amount:'',minimum_payment:'',paid_amount:''});}}>Cancelar</button>
