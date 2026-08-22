@@ -863,8 +863,9 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
   const creditTotals = creditCards.reduce((acc,c)=>{
     const f = cardFigures(c);
     if(f.hasData){ acc.limit+=f.limit; acc.owed+=f.owed; acc.available+=f.available; }
+    if(c.minimum_payment!=null) acc.minimum += Number(c.minimum_payment);
     return acc;
-  }, {limit:0,owed:0,available:0});
+  }, {limit:0,owed:0,available:0,minimum:0});
 
   const bankTotal = bankCards.reduce((acc,c)=>{
     const f = cardFigures(c);
@@ -943,6 +944,9 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
               </div>
               <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
                 <span className="muted">Saldo em aberto total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--amber)'}}>{fmtBRL(creditTotals.owed)}</b>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+                <span className="muted">Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(creditTotals.minimum)}</b>
               </div>
               <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
                 <span className="muted">Disponível total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(creditTotals.available)}</b>
