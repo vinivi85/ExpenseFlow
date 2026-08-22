@@ -1857,7 +1857,13 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
       });
     }
 
-    setRows(allRows.sort((a,b)=> (a.card_id?0:1) - (b.card_id?0:1) || new Date(a.created_at)-new Date(b.created_at)));
+    const formattedRows = allRows.map(r=>({
+      ...r,
+      open_amount: r.open_amount!=null ? fmt2(r.open_amount) : r.open_amount,
+      minimum_payment: r.minimum_payment!=null ? fmt2(r.minimum_payment) : r.minimum_payment,
+      paid_amount: r.paid_amount!=null ? fmt2(r.paid_amount) : r.paid_amount,
+    }));
+    setRows(formattedRows.sort((a,b)=> (a.card_id?0:1) - (b.card_id?0:1) || new Date(a.created_at)-new Date(b.created_at)));
     setLoading(false);
   }
 
@@ -1960,7 +1966,11 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
   }
 
   async function togglePaid(row, checked){
-    const updated = { ...row, paid_amount: checked ? (row.paid_amount==='' || row.paid_amount==null ? '0' : row.paid_amount) : '' };
+    const updated = {
+      ...row,
+      is_paid: checked,
+      paid_amount: checked ? (row.paid_amount==='' || row.paid_amount==null ? fmt2(0) : row.paid_amount) : row.paid_amount
+    };
     setRows(prev=>prev.map(r=>r.id===row.id ? updated : r));
     await saveRow(updated);
   }
@@ -1974,7 +1984,8 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
       minimum_payment: row.minimum_payment===''?null:parseFloat(String(row.minimum_payment).replace(',','.')),
       paid_amount: row.paid_amount===''?null:parseFloat(String(row.paid_amount).replace(',','.')),
       paid_date: row.paid_amount ? (row.paid_date || new Date().toISOString().slice(0,10)) : null,
-      expense_id: match ? match.id : null
+      expense_id: match ? match.id : null,
+      is_paid: !!row.is_paid
     }).eq('id',row.id);
     setSavingId(null);
     if(error){ showToast('Erro: '+error.message); return; }
@@ -2046,7 +2057,16 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
       const value = connected ? (b.available_balance ?? b.current_balance ?? 0) : (c.manual_balance ?? 0);
       return sum + Number(value||0);
     }, 0);
-  const monthBalance = bankAccountsTotal - totals.minimum;
+  // Saldo do mês: pra cada conta, usa o valor PAGO se já foi marcada como paga
+  // (manualmente ou por lançamento confirmado); senão usa o mínimo cadastrado no
+  // Resumo — assim o saldo reflete o que já saiu de verdade + o que ainda vai sair.
+  const monthOutflow = rows.reduce((sum,r)=>{
+    const rowIsPaid = r.is_paid===true || r.expense_id!=null;
+    const card = r.card_id ? (cards||[]).find(c=>c.id===r.card_id) : null;
+    const minFromResumo = Number(card?.minimum_payment||0);
+    return sum + (rowIsPaid ? Number(r.paid_amount||0) : minFromResumo);
+  }, 0);
+  const monthBalance = bankAccountsTotal - monthOutflow;
 
   return (
     <div>
@@ -2087,7 +2107,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
         const cardMinimum = rowCard?.minimum_payment;
         const belowMinimum = cardMinimum!=null && Number(row.minimum_payment||0) < Number(cardMinimum) && Number(row.minimum_payment||0) > 0;
         const daysToDue = rowCard?.due_day!=null ? daysUntilNextDue(rowCard.due_day) : null;
-        const isPaid = row.paid_amount!=null;
+        const isPaid = row.is_paid===true || row.expense_id!=null;
         const dueSoon = daysToDue!=null && daysToDue<=3 && !isPaid;
         return (
         <div key={row.id} className="card" style={{marginBottom:10,position:'relative'}}>
@@ -2119,7 +2139,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
               )}
             </div>
             <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,flexShrink:0}}>
-              <input type="checkbox" checked={row.paid_amount!=null} onChange={e=>togglePaid(row,e.target.checked)} />
+              <input type="checkbox" checked={isPaid} onChange={e=>togglePaid(row,e.target.checked)} />
               Pago
             </label>
           </div>
@@ -2185,19 +2205,13 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             <span className="muted">Total em contas (Resumo)</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(bankAccountsTotal)}</b>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:8}}>
-            <span className="muted">− Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(totals.minimum)}</b>
-          </div>
-          <div style={{display:'flex',justifyContent:'space-between',fontSize:13,paddingBottom:12,borderBottom:'1px dashed var(--bezel)',marginBottom:8}}>
-            <span style={{fontWeight:700}}>Saldo do mês (pelo mínimo)</span>
-            <b style={{fontFamily:'JetBrains Mono, monospace',color:monthBalance>=0?'var(--green)':'var(--red)'}}>{fmtBRL(monthBalance)}</b>
-          </div>
-          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
-            <span className="muted">Total pago</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(totals.paid)}</b>
+            <span className="muted">− Pago (marcadas) + Mínimo (restante)</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(monthOutflow)}</b>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:13,paddingTop:8,borderTop:'1px dashed var(--bezel)'}}>
-            <span style={{fontWeight:700}}>Saldo do mês (pelo pago)</span>
-            <b style={{fontFamily:'JetBrains Mono, monospace',color:(bankAccountsTotal-totals.paid)>=0?'var(--green)':'var(--red)'}}>{fmtBRL(bankAccountsTotal-totals.paid)}</b>
+            <span style={{fontWeight:700}}>Saldo do mês</span>
+            <b style={{fontFamily:'JetBrains Mono, monospace',color:monthBalance>=0?'var(--green)':'var(--red)'}}>{fmtBRL(monthBalance)}</b>
           </div>
+          <p className="muted" style={{marginTop:8,fontSize:10.5}}>Contas marcadas como "Pago" entram pelo valor pago; as demais entram pelo mínimo cadastrado no Resumo.</p>
         </div>
       )}
 
@@ -2923,8 +2937,11 @@ create table if not exists bills_to_pay (
   paid_amount numeric,
   paid_date date,
   expense_id uuid references expenses(id) on delete set null,
+  is_paid boolean default false,
   created_at timestamp default now()
 );
+
+alter table bills_to_pay add column if not exists is_paid boolean default false;
 
 alter table bills_to_pay enable row level security;
 
