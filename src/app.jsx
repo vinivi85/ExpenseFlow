@@ -594,7 +594,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
   async function loadBalances(){
     try{
-      const res = await fetch('/api/plaid-status');
+      const res = await fetch('/api/plaid-status', {cache:'no-store'});
       const data = await res.json();
       if(!res.ok) return;
       setBalances(data.connections||[]);
@@ -1793,7 +1793,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
 
   async function loadBalances(){
     try{
-      const res = await fetch('/api/plaid-status');
+      const res = await fetch('/api/plaid-status', {cache:'no-store'});
       const data = await res.json();
       if(res.ok){ setBalances(data.connections||[]); return data.connections||[]; }
     }catch(e){ /* ignora */ }
@@ -2200,7 +2200,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
 
   async function loadPlaidStatus(){
     try{
-      const res = await fetch('/api/plaid-status');
+      const res = await fetch('/api/plaid-status', {cache:'no-store'});
       const data = await res.json();
       if(!res.ok) return; // sem configuração do Plaid ainda, tudo bem, só não mostra status
       const map = {};
