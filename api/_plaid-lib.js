@@ -172,16 +172,19 @@ async function syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, co
     body: JSON.stringify({ cursor, last_synced_at: new Date().toISOString() }),
   });
 
-  // Atualiza saldo de cada conta desse item
+  // Atualiza saldo de cada conta desse item — e guarda qualquer erro pra mostrar
+  // pro usuário, em vez de falhar caladinho (era o que estava acontecendo).
+  const balanceErrors = [];
   for (const conn of connections) {
-    await fetchAndStoreBalance({ supabaseUrl, serviceKey, clientId, secret, accessToken: item.plaid_access_token, conn });
+    const result = await fetchAndStoreBalance({ supabaseUrl, serviceKey, clientId, secret, accessToken: item.plaid_access_token, conn });
+    if (result.error) balanceErrors.push(`${conn.account_name || conn.id}: ${result.error}`);
   }
   await supaFetch(supabaseUrl, serviceKey, `plaid_connections?item_ref=eq.${item.id}`, {
     method: 'PATCH',
     body: JSON.stringify({ status: 'connected' }),
   });
 
-  return { imported: toInsert.length, pending: toPending.length };
+  return { imported: toInsert.length, pending: toPending.length, balanceErrors: balanceErrors.length ? balanceErrors : undefined };
 }
 
 // Sincroniza TODOS os items (logins) ativos de uma vez (usado pelo botão "Sincronizar tudo" e pelo cron).

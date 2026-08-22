@@ -614,7 +614,12 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       if(!res.ok){ showToast('Erro ao sincronizar: '+(data.error||'')); return; }
       if(data.results.length===0){ showToast('Nenhum cartão conectado ao Plaid ainda'); return; }
       const pendingMsg = data.totalPending>0 ? `, ${data.totalPending} pendente(s) de revisão` : '';
-      showToast(data.totalImported+' nova(s) despesa(s) importada(s)'+pendingMsg+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓');
+      const balErrs = (data.results||[]).flatMap(r=>r.balanceErrors||[]);
+      if(balErrs.length>0){
+        showToast(data.totalImported+' importada(s), mas erro no saldo: '+balErrs.join('; '), 6000);
+      } else {
+        showToast(data.totalImported+' nova(s) despesa(s) importada(s)'+pendingMsg+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓');
+      }
       if(reload) reload();
       loadBalances();
       if(loadPendingReview) loadPendingReview();
@@ -2264,7 +2269,11 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
       setSyncingCardId(null);
       if(!res.ok){ showToast('Erro ao sincronizar: '+(data.error||'')); return; }
       const pendingMsg = data.pending>0 ? `, ${data.pending} pendente(s) de revisão` : '';
-      showToast('"'+cardName+'": '+data.imported+' nova(s) despesa(s) importada(s)'+pendingMsg+' ✓');
+      if(data.balanceErrors && data.balanceErrors.length>0){
+        showToast('"'+cardName+'": '+data.imported+' importada(s), mas erro ao buscar saldo: '+data.balanceErrors.join('; '), 6000);
+      } else {
+        showToast('"'+cardName+'": '+data.imported+' nova(s) despesa(s) importada(s)'+pendingMsg+' ✓');
+      }
       loadPlaidStatus();
       if(reloadExpenses) reloadExpenses();
     }catch(e){
