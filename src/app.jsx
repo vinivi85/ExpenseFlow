@@ -1786,13 +1786,31 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
   async function checkForNewCards(){
     setCheckingNew(true);
     const bals = await loadBalances();
-    const {data} = await client.from('bills_to_pay').select('card_id').eq('month_key',monthKey);
-    const existingIds = new Set((data||[]).filter(r=>r.card_id).map(r=>r.card_id));
+    const {data} = await client.from('bills_to_pay').select('*').eq('month_key',monthKey);
+    const existingRows = data||[];
+    const existingIds = new Set(existingRows.filter(r=>r.card_id).map(r=>r.card_id));
     const creditCards = (cards||[]).filter(c=>(c.account_type||'credit')==='credit');
     const missing = creditCards.filter(c=>!existingIds.has(c.id));
+
+    // Pras que já existem na lista, atualiza o mínimo pro valor cadastrado no Resumo agora
+    const toSync = existingRows.filter(r=>{
+      if(!r.card_id) return false;
+      const card = creditCards.find(c=>c.id===r.card_id);
+      return card && card.minimum_payment!=null && Number(card.minimum_payment)!==Number(r.minimum_payment||0);
+    });
+    if(toSync.length>0){
+      await Promise.all(toSync.map(r=>{
+        const card = creditCards.find(c=>c.id===r.card_id);
+        return client.from('bills_to_pay').update({ minimum_payment: card.minimum_payment }).eq('id',r.id);
+      }));
+    }
+
     setCheckingNew(false);
-    if(missing.length===0){ showToast('Nenhum cartão novo — lista já está completa'); return; }
-    setPendingNewCards(missing.map(c=>({ id:c.id, name:c.name, suggestedOpen: suggestedOpenFor(c.id,bals), suggestedMinimum: c.minimum_payment, checked:true })));
+    if(missing.length===0 && toSync.length===0){ showToast('Nenhuma novidade — lista já está atualizada'); loadRows(bals); return; }
+    if(toSync.length>0){ showToast(toSync.length+' mínimo(s) atualizado(s) do Resumo ✓'); loadRows(bals); }
+    if(missing.length>0){
+      setPendingNewCards(missing.map(c=>({ id:c.id, name:c.name, suggestedOpen: suggestedOpenFor(c.id,bals), suggestedMinimum: c.minimum_payment, checked:true })));
+    }
   }
 
   async function confirmAddNewCards(){
@@ -1962,6 +1980,8 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
 
       {!loading && rows.map(row=>{
         const isConnected = row.card_id && balances.some(b=>b.card_id===row.card_id && b.status==='connected');
+        const cardMinimum = row.card_id ? (cards||[]).find(c=>c.id===row.card_id)?.minimum_payment : null;
+        const belowMinimum = cardMinimum!=null && Number(row.minimum_payment||0) < Number(cardMinimum) && Number(row.minimum_payment||0) > 0;
         return (
         <div key={row.id} className="card" style={{marginBottom:10,position:'relative'}}>
           {isConnected && (
@@ -1981,8 +2001,20 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
               <input value={row.open_amount??''} onChange={e=>updateLocal(row.id,'open_amount',e.target.value)} onBlur={()=>saveRow(row)} placeholder="0,00" inputMode="decimal" />
             </div>
             <div className="field" style={{marginBottom:0}}>
-              <label>Mínimo</label>
-              <input value={row.minimum_payment??''} onChange={e=>updateLocal(row.id,'minimum_payment',e.target.value)} onBlur={()=>saveRow(row)} placeholder="0,00" inputMode="decimal" />
+              <label style={{display:'flex',alignItems:'center',gap:4}}>
+                Mínimo
+                {belowMinimum && (
+                  <span style={{cursor:'pointer'}} onClick={()=>showToast('⚠️ Mínimo abaixo do permitido — o cadastrado no Resumo é '+fmtBRL(cardMinimum))}>⚠️</span>
+                )}
+              </label>
+              <input
+                value={row.minimum_payment??''}
+                onChange={e=>updateLocal(row.id,'minimum_payment',e.target.value)}
+                onBlur={()=>saveRow(row)}
+                placeholder="0,00"
+                inputMode="decimal"
+                style={belowMinimum ? {borderColor:'var(--red)',color:'var(--red)'} : undefined}
+              />
             </div>
           </div>
           <div className="row2">
