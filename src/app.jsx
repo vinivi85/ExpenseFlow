@@ -1795,6 +1795,15 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
 
   const monthLabel = capitalize(new Date(monthKey+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'}));
 
+  // Vencimento recorre todo mês no mesmo dia — acha a próxima ocorrência a partir de hoje.
+  function daysUntilNextDue(dueDay){
+    if(dueDay==null) return null;
+    const today = new Date(); today.setHours(0,0,0,0);
+    let candidate = new Date(today.getFullYear(), today.getMonth(), dueDay);
+    if(candidate < today) candidate = new Date(today.getFullYear(), today.getMonth()+1, dueDay);
+    return Math.round((candidate-today)/86400000);
+  }
+
   async function loadBalances(){
     try{
       const res = await fetch('/api/plaid-status', {cache:'no-store'});
@@ -2039,10 +2048,18 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
 
       {!loading && rows.map(row=>{
         const isConnected = row.card_id && balances.some(b=>b.card_id===row.card_id && b.status==='connected');
-        const cardMinimum = row.card_id ? (cards||[]).find(c=>c.id===row.card_id)?.minimum_payment : null;
+        const rowCard = row.card_id ? (cards||[]).find(c=>c.id===row.card_id) : null;
+        const cardMinimum = rowCard?.minimum_payment;
         const belowMinimum = cardMinimum!=null && Number(row.minimum_payment||0) < Number(cardMinimum) && Number(row.minimum_payment||0) > 0;
+        const daysToDue = rowCard?.due_day!=null ? daysUntilNextDue(rowCard.due_day) : null;
+        const dueSoon = daysToDue!=null && daysToDue<=3;
         return (
         <div key={row.id} className="card" style={{marginBottom:10,position:'relative'}}>
+          {dueSoon && (
+            <div style={{marginBottom:8,padding:'6px 10px',background:'rgba(220,38,38,0.08)',border:'1px solid var(--red)',borderRadius:6,fontSize:11.5,color:'var(--red)',fontWeight:700}}>
+              ⚠️ Vencimento em {daysToDue<=0 ? 'hoje ou já passou' : daysToDue+' dia'+(daysToDue>1?'s':'')}
+            </div>
+          )}
           {isConnected && (
             <span style={{position:'absolute',top:10,right:10,fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff'}}>PLAID</span>
           )}
@@ -2060,8 +2077,8 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
               <input value={row.open_amount??''} onChange={e=>updateLocal(row.id,'open_amount',e.target.value)} onBlur={()=>saveRow(row)} placeholder="0,00" inputMode="decimal" />
             </div>
             <div className="field" style={{marginBottom:0}}>
-              <label style={{display:'flex',alignItems:'center',gap:4}}>
-                Mínimo
+              <label style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
+                <span>Mínimo{cardMinimum!=null && <> {'>'} {fmtBRL(cardMinimum)}</>}</span>
                 {belowMinimum && (
                   <span style={{cursor:'pointer'}} onClick={()=>showToast('⚠️ Mínimo abaixo do permitido — o cadastrado no Resumo é '+fmtBRL(cardMinimum))}>⚠️</span>
                 )}
