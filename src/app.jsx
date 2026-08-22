@@ -559,6 +559,7 @@ function App(){
 
 function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal,creditCatList,creditTotal,cards,client,reloadCards,reload,showToast}){
   const [syncing,setSyncing] = useState(false);
+  const [syncResultMsg,setSyncResultMsg] = useState(null);
   const [balances,setBalances] = useState([]);
   const [editingManualId,setEditingManualId] = useState(null);
   const [manualDraft,setManualDraft] = useState({limit:'',balance:''});
@@ -607,25 +608,40 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
   async function syncAll(){
     setSyncing(true);
+    setSyncResultMsg(null);
     try{
       const res = await fetch('/api/plaid-sync-all', { method:'POST' });
       const data = await res.json();
       setSyncing(false);
-      if(!res.ok){ showToast('Erro ao sincronizar: '+(data.error||'')); return; }
-      if(data.results.length===0){ showToast('Nenhum cartão conectado ao Plaid ainda'); return; }
+      if(!res.ok){
+        const msg = 'Erro ao sincronizar: '+(data.error||'');
+        showToast(msg); setSyncResultMsg({type:'error', text:msg, at:new Date()});
+        return;
+      }
+      if(data.results.length===0){
+        const msg = 'Nenhum cartão conectado ao Plaid ainda';
+        showToast(msg); setSyncResultMsg({type:'info', text:msg, at:new Date()});
+        return;
+      }
       const pendingMsg = data.totalPending>0 ? `, ${data.totalPending} pendente(s) de revisão` : '';
       const balErrs = (data.results||[]).flatMap(r=>r.balanceErrors||[]);
+      let finalMsg, finalType;
       if(balErrs.length>0){
-        showToast(data.totalImported+' importada(s), mas erro no saldo: '+balErrs.join('; '), 6000);
+        finalMsg = data.totalImported+' importada(s), mas erro no saldo: '+balErrs.join('; ');
+        finalType = 'error';
       } else {
-        showToast(data.totalImported+' nova(s) despesa(s) importada(s)'+pendingMsg+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓');
+        finalMsg = data.totalImported+' nova(s) despesa(s) importada(s)'+pendingMsg+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓';
+        finalType = data.hadErrors ? 'error' : 'success';
       }
+      showToast(finalMsg, balErrs.length>0?6000:2600);
+      setSyncResultMsg({type:finalType, text:finalMsg, at:new Date()});
       if(reload) reload();
       loadBalances();
       if(loadPendingReview) loadPendingReview();
     }catch(e){
       setSyncing(false);
-      showToast('Erro ao sincronizar: '+e.message);
+      const msg = 'Erro ao sincronizar: '+e.message;
+      showToast(msg); setSyncResultMsg({type:'error', text:msg, at:new Date()});
     }
   }
 
@@ -826,9 +842,15 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
   return (
     <div>
-      <button className="btn btn-ghost" style={{marginBottom:16}} onClick={syncAll} disabled={syncing}>
+      <button className="btn btn-ghost" onClick={syncAll} disabled={syncing}>
         {syncing ? <span className="spinner"></span> : '🔄 Sincronizar tudo (Plaid)'}
       </button>
+      {syncResultMsg && (
+        <p style={{fontSize:11.5,margin:'6px 0 16px',color: syncResultMsg.type==='error' ? 'var(--red)' : (syncResultMsg.type==='success' ? 'var(--green)' : 'var(--muted)')}}>
+          {syncResultMsg.text} · {syncResultMsg.at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+        </p>
+      )}
+      {!syncResultMsg && <div style={{marginBottom:16}}></div>}
 
       {pendingReview.length>0 && (
         <>
@@ -2143,6 +2165,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
   const [plaidPending,setPlaidPending] = useState([]); // contas ainda não associadas a nenhum cartão
   const [connectingCardId,setConnectingCardId] = useState(null);
   const [syncingCardId,setSyncingCardId] = useState(null);
+  const [syncMsgByCard,setSyncMsgByCard] = useState({}); // card_id -> {type,text,at}
   const [disconnectingId,setDisconnectingId] = useState(null);
   const [assignDrafts,setAssignDrafts] = useState({}); // connection_id -> {mode:'existing'|'new', cardId, newName}
   const [assigning,setAssigning] = useState(false);
@@ -2267,18 +2290,31 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
       });
       const data = await res.json();
       setSyncingCardId(null);
-      if(!res.ok){ showToast('Erro ao sincronizar: '+(data.error||'')); return; }
-      const pendingMsg = data.pending>0 ? `, ${data.pending} pendente(s) de revisão` : '';
-      if(data.balanceErrors && data.balanceErrors.length>0){
-        showToast('"'+cardName+'": '+data.imported+' importada(s), mas erro ao buscar saldo: '+data.balanceErrors.join('; '), 6000);
-      } else {
-        showToast('"'+cardName+'": '+data.imported+' nova(s) despesa(s) importada(s)'+pendingMsg+' ✓');
+      if(!res.ok){
+        const msg = 'Erro: '+(data.error||'');
+        showToast('Erro ao sincronizar: '+(data.error||''));
+        setSyncMsgByCard(prev=>({...prev,[cardId]:{type:'error',text:msg,at:new Date()}}));
+        return;
       }
+      const pendingMsg = data.pending>0 ? `, ${data.pending} pendente(s) de revisão` : '';
+      let finalMsg, finalType;
+      if(data.balanceErrors && data.balanceErrors.length>0){
+        finalMsg = data.imported+' importada(s), mas erro no saldo: '+data.balanceErrors.join('; ');
+        finalType = 'error';
+        showToast('"'+cardName+'": '+finalMsg, 6000);
+      } else {
+        finalMsg = data.imported+' nova(s) despesa(s) importada(s)'+pendingMsg+' ✓';
+        finalType = 'success';
+        showToast('"'+cardName+'": '+finalMsg);
+      }
+      setSyncMsgByCard(prev=>({...prev,[cardId]:{type:finalType,text:finalMsg,at:new Date()}}));
       loadPlaidStatus();
       if(reloadExpenses) reloadExpenses();
     }catch(e){
       setSyncingCardId(null);
+      const msg = 'Erro: '+e.message;
       showToast('Erro ao sincronizar: '+e.message);
+      setSyncMsgByCard(prev=>({...prev,[cardId]:{type:'error',text:msg,at:new Date()}}));
     }
   }
 
@@ -2492,6 +2528,11 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
                     <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteCard(c.id,c.name)}>excluir</span>
                   </div>
                 </div>
+                {syncMsgByCard[c.id] && (
+                  <p style={{fontSize:11,margin:'6px 0 0',color: syncMsgByCard[c.id].type==='error' ? 'var(--red)' : 'var(--green)'}}>
+                    {syncMsgByCard[c.id].text} · {syncMsgByCard[c.id].at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+                  </p>
+                )}
               </div>
             );
           })}
