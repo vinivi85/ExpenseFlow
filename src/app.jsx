@@ -2057,14 +2057,12 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
       const value = connected ? (b.available_balance ?? b.current_balance ?? 0) : (c.manual_balance ?? 0);
       return sum + Number(value||0);
     }, 0);
-  // Saldo do mês: pra cada conta, usa o valor PAGO se já foi marcada como paga
-  // (manualmente ou por lançamento confirmado); senão usa o mínimo cadastrado no
-  // Resumo — assim o saldo reflete o que já saiu de verdade + o que ainda vai sair.
+  // Saldo do mês = Total em contas − (Pago das marcadas + "A pagar" das que não
+  // foram pagas). Usa o valor "A pagar" salvo em cada linha (que pode ter sido
+  // ajustado manualmente ali), não o mínimo cadastrado no Resumo.
   const monthOutflow = rows.reduce((sum,r)=>{
     const rowIsPaid = r.is_paid===true || r.expense_id!=null;
-    const card = r.card_id ? (cards||[]).find(c=>c.id===r.card_id) : null;
-    const minFromResumo = Number(card?.minimum_payment||0);
-    return sum + (rowIsPaid ? Number(r.paid_amount||0) : minFromResumo);
+    return sum + Number(rowIsPaid ? (r.paid_amount||0) : (r.minimum_payment||0));
   }, 0);
   const monthBalance = bankAccountsTotal - monthOutflow;
 
@@ -2205,13 +2203,13 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             <span className="muted">Total em contas (Resumo)</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(bankAccountsTotal)}</b>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:8}}>
-            <span className="muted">− Pago (marcadas) + Mínimo (restante)</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(monthOutflow)}</b>
+            <span className="muted">− (Pago das marcadas + A pagar das não pagas)</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(monthOutflow)}</b>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:13,paddingTop:8,borderTop:'1px dashed var(--bezel)'}}>
             <span style={{fontWeight:700}}>Saldo do mês</span>
             <b style={{fontFamily:'JetBrains Mono, monospace',color:monthBalance>=0?'var(--green)':'var(--red)'}}>{fmtBRL(monthBalance)}</b>
           </div>
-          <p className="muted" style={{marginTop:8,fontSize:10.5}}>Contas marcadas como "Pago" entram pelo valor pago; as demais entram pelo mínimo cadastrado no Resumo.</p>
+          <p className="muted" style={{marginTop:8,fontSize:10.5}}>Contas marcadas como "Pago" entram pelo valor pago; as demais entram pelo "A pagar" de cada uma.</p>
         </div>
       )}
 
