@@ -2056,8 +2056,9 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             <span className="muted">Total pago</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(totals.paid)}</b>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
-            <span className="muted">Saldo total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:totals.saldo>0?'var(--amber)':'var(--green)'}}>{fmtBRL(totals.saldo)}</b>
+            <span className="muted">Estimativa de saldo</span><b style={{fontFamily:'JetBrains Mono, monospace',color:totals.saldo>0?'var(--amber)':'var(--green)'}}>{fmtBRL(totals.saldo)}</b>
           </div>
+          <p className="muted" style={{marginTop:8,fontSize:10.5}}>A estimativa de saldo é só informativa (aberto − pago), não considera o que ainda vai entrar via Plaid.</p>
         </div>
       )}
 
@@ -2070,9 +2071,16 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:8}}>
             <span className="muted">− Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(totals.minimum)}</b>
           </div>
-          <div style={{display:'flex',justifyContent:'space-between',fontSize:13,paddingTop:8,borderTop:'1px dashed var(--bezel)'}}>
-            <span style={{fontWeight:700}}>Saldo do mês</span>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:13,paddingBottom:12,borderBottom:'1px dashed var(--bezel)',marginBottom:8}}>
+            <span style={{fontWeight:700}}>Saldo do mês (pelo mínimo)</span>
             <b style={{fontFamily:'JetBrains Mono, monospace',color:monthBalance>=0?'var(--green)':'var(--red)'}}>{fmtBRL(monthBalance)}</b>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+            <span className="muted">Total pago</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(totals.paid)}</b>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:13,paddingTop:8,borderTop:'1px dashed var(--bezel)'}}>
+            <span style={{fontWeight:700}}>Saldo do mês (pelo pago)</span>
+            <b style={{fontFamily:'JetBrains Mono, monospace',color:(bankAccountsTotal-totals.paid)>=0?'var(--green)':'var(--red)'}}>{fmtBRL(bankAccountsTotal-totals.paid)}</b>
           </div>
         </div>
       )}
