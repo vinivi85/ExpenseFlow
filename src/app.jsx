@@ -1873,9 +1873,22 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
   const totals = rows.reduce((acc,r)=>{
     const open = Number(r.open_amount)||0;
     const paid = Number(r.paid_amount)||0;
-    acc.open += open; acc.paid += paid; acc.saldo += (open-paid);
+    const min = Number(r.minimum_payment)||0;
+    acc.open += open; acc.paid += paid; acc.saldo += (open-paid); acc.minimum += min;
     return acc;
-  }, {open:0,paid:0,saldo:0});
+  }, {open:0,paid:0,saldo:0,minimum:0});
+
+  // Total disponível nas contas bancárias (mesmo dado do card "Contas Bancárias" no Resumo),
+  // pra ver se dá pra cobrir os mínimos desse mês.
+  const bankAccountsTotal = (cards||[])
+    .filter(c=>c.account_type==='bank')
+    .reduce((sum,c)=>{
+      const b = balances.find(x=>x.card_id===c.id);
+      const connected = b?.status==='connected';
+      const value = connected ? (b.available_balance ?? b.current_balance ?? 0) : (c.manual_balance ?? 0);
+      return sum + Number(value||0);
+    }, 0);
+  const monthBalance = bankAccountsTotal - totals.minimum;
 
   return (
     <div>
@@ -1968,10 +1981,29 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             <span className="muted">Total em aberto</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(totals.open)}</b>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+            <span className="muted">Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(totals.minimum)}</b>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
             <span className="muted">Total pago</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(totals.paid)}</b>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
             <span className="muted">Saldo total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:totals.saldo>0?'var(--amber)':'var(--green)'}}>{fmtBRL(totals.saldo)}</b>
+          </div>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="card" style={{borderColor:'var(--green)'}}>
+          <div style={{fontWeight:700,marginBottom:8,fontSize:13}}>Saldo do mês</div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+            <span className="muted">Total em contas (Resumo)</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(bankAccountsTotal)}</b>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:8}}>
+            <span className="muted">− Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(totals.minimum)}</b>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:13,paddingTop:8,borderTop:'1px dashed var(--bezel)'}}>
+            <span style={{fontWeight:700}}>Saldo do mês</span>
+            <b style={{fontFamily:'JetBrains Mono, monospace',color:monthBalance>=0?'var(--green)':'var(--red)'}}>{fmtBRL(monthBalance)}</b>
           </div>
         </div>
       )}
