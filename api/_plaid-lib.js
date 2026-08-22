@@ -201,7 +201,7 @@ async function syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, co
   }
   await supaFetch(supabaseUrl, serviceKey, `plaid_connections?item_ref=eq.${item.id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ status: 'connected' }),
+    body: JSON.stringify({ status: 'connected', last_synced_at: new Date().toISOString() }),
   });
 
   return { imported: toInsert.length, pending: toPending.length, balanceErrors: balanceErrors.length ? balanceErrors : undefined };
