@@ -2215,7 +2215,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             <span className="muted">Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(resumoMinimumTotal)}</b>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
-            <span className="muted">Saldo total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:saldoTotalCard>=0?'var(--amber)':'var(--red)'}}>{fmtBRL(saldoTotalCard)}</b>
+            <span className="muted">Saldo total após pagamentos</span><b style={{fontFamily:'JetBrains Mono, monospace',color:saldoTotalCard>=0?'var(--amber)':'var(--red)'}}>{fmtBRL(saldoTotalCard)}</b>
           </div>
         </div>
       )}
