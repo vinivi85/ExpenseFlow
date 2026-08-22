@@ -1938,6 +1938,12 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     return candidates[0] || null;
   }
 
+  async function togglePaid(row, checked){
+    const updated = { ...row, paid_amount: checked ? (row.paid_amount==='' || row.paid_amount==null ? '0' : row.paid_amount) : '' };
+    setRows(prev=>prev.map(r=>r.id===row.id ? updated : r));
+    await saveRow(updated);
+  }
+
   async function saveRow(row){
     setSavingId(row.id);
     const match = findMatchingExpense(row);
@@ -2052,7 +2058,8 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
         const cardMinimum = rowCard?.minimum_payment;
         const belowMinimum = cardMinimum!=null && Number(row.minimum_payment||0) < Number(cardMinimum) && Number(row.minimum_payment||0) > 0;
         const daysToDue = rowCard?.due_day!=null ? daysUntilNextDue(rowCard.due_day) : null;
-        const dueSoon = daysToDue!=null && daysToDue<=3;
+        const isPaid = row.paid_amount!=null;
+        const dueSoon = daysToDue!=null && daysToDue<=3 && !isPaid;
         return (
         <div key={row.id} className="card" style={{marginBottom:10,position:'relative'}}>
           {dueSoon && (
@@ -2095,7 +2102,10 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
           </div>
           <div className="row2">
             <div className="field" style={{marginBottom:0}}>
-              <label>Valor pago</label>
+              <label style={{display:'flex',alignItems:'center',gap:6}}>
+                <input type="checkbox" checked={row.paid_amount!=null} onChange={e=>togglePaid(row,e.target.checked)} />
+                Pago
+              </label>
               <input value={row.paid_amount??''} onChange={e=>updateLocal(row.id,'paid_amount',e.target.value)} onBlur={()=>saveRow(row)} placeholder="0,00" inputMode="decimal" />
             </div>
             <div className="field" style={{marginBottom:0}}>
