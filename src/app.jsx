@@ -133,11 +133,19 @@ function normalizeDate(raw){
   return new Date().toISOString().slice(0,10);
 }
 
-// Tenta achar um usuário cadastrado dentro do texto de "Purchased By" (ex: "Aline Vicente" bate com o usuário "Aline")
+// Tenta achar um usuário cadastrado dentro do texto de "Purchased By". Checa nos
+// dois sentidos: nome completo extraído batendo com nome curto cadastrado (ex:
+// "Aline Vicente" bate com usuário "Aline"), E primeiro nome extraído batendo com
+// nome completo cadastrado (ex: "Aline" bate com usuário "Aline Vicente" — comum,
+// já que o app da Apple Card geralmente só mostra o primeiro nome na tela).
 function matchUserFromText(raw, users){
   if(!raw) return null;
   const rl = raw.trim().toLowerCase();
-  return (users||[]).find(u=>rl.includes(u.trim().toLowerCase())) || null;
+  if(rl.length<3) return null; // evita match trivial por texto curto demais
+  return (users||[]).find(u=>{
+    const ul = u.trim().toLowerCase();
+    return rl.includes(ul) || ul.includes(rl);
+  }) || null;
 }
 
 function parseCardCSV(text, categories, users){
