@@ -3,7 +3,7 @@
 // banco) e busca TODAS as contas dele. Não associa nenhuma a um cartão sozinho —
 // devolve a lista pro app perguntar pro usuário qual conta é qual.
 
-import { fetchAndStoreBalance } from './_plaid-lib.js';
+import { fetchBalancesForItem, applyBalanceToConnection } from './_plaid-lib.js';
 
 function plaidBaseUrl() {
   const env = process.env.PLAID_ENV || 'sandbox';
@@ -107,9 +107,13 @@ export default async function handler(req, res) {
     }
     const savedConnections = await connInsertRes.json();
 
-    // Busca o saldo de cada conta já de cara, pra ficar pronto quando o usuário associar
-    for (const conn of savedConnections) {
-      await fetchAndStoreBalance({ supabaseUrl, serviceKey, clientId, secret, accessToken, conn });
+    // Busca o saldo de todas as contas já de cara (uma chamada só), pra ficar pronto
+    // quando o usuário associar
+    const balResult = await fetchBalancesForItem({ clientId, secret, accessToken });
+    if (!balResult.error) {
+      for (const conn of savedConnections) {
+        await applyBalanceToConnection({ supabaseUrl, serviceKey, conn, accounts: balResult.accounts });
+      }
     }
 
     res.status(200).json({

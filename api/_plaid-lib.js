@@ -41,7 +41,10 @@ async function supaFetch(supabaseUrl, serviceKey, path, opts = {}) {
 }
 
 // Busca saldo/limite de UMA conta específica dentro de um item e atualiza no banco.
-async function fetchAndStoreBalance({ supabaseUrl, serviceKey, clientId, secret, accessToken, conn }) {
+// Busca o saldo de TODAS as contas de um item numa chamada só — antes isso rodava
+// uma vez por conta (3-4x pro mesmo login em bancos como a Capital One), o que
+// pode disparar limite de taxa da API e fazer contas depois da primeira falharem.
+async function fetchBalancesForItem({ clientId, secret, accessToken }) {
   try {
     const balRes = await fetch(`${plaidBaseUrl()}/accounts/balance/get`, {
       method: 'POST',
@@ -49,24 +52,35 @@ async function fetchAndStoreBalance({ supabaseUrl, serviceKey, clientId, secret,
       body: JSON.stringify({ client_id: clientId, secret: secret, access_token: accessToken }),
     });
     const balData = await balRes.json();
-    if (!balRes.ok) return { error: balData.error_message };
-    const account = (balData.accounts || []).find(a => a.account_id === conn.plaid_account_id);
-    if (!account) return { error: 'Conta não encontrada' };
-    const balances = account.balances || {};
-    await supaFetch(supabaseUrl, serviceKey, `plaid_connections?id=eq.${conn.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        current_balance: balances.current,
-        available_balance: balances.available,
-        credit_limit: balances.limit,
-        iso_currency_code: balances.iso_currency_code,
-        balance_updated_at: new Date().toISOString(),
-      }),
-    });
-    return { ok: true };
+    if (!balRes.ok) return { error: balData.error_message || balData.error_code || 'Erro ao buscar saldo' };
+    return { accounts: balData.accounts || [] };
   } catch (e) {
     return { error: e.message };
   }
+}
+
+async function applyBalanceToConnection({ supabaseUrl, serviceKey, conn, accounts }) {
+  const account = (accounts || []).find(a => a.account_id === conn.plaid_account_id);
+  if (!account) return { error: 'Conta não encontrada no retorno do Plaid' };
+  const balances = account.balances || {};
+  await supaFetch(supabaseUrl, serviceKey, `plaid_connections?id=eq.${conn.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      current_balance: balances.current,
+      available_balance: balances.available,
+      credit_limit: balances.limit,
+      iso_currency_code: balances.iso_currency_code,
+      balance_updated_at: new Date().toISOString(),
+    }),
+  });
+  return { ok: true };
+}
+
+// Mantido pra compatibilidade — busca e aplica pra uma única conexão de uma vez.
+async function fetchAndStoreBalance({ supabaseUrl, serviceKey, clientId, secret, accessToken, conn }) {
+  const balResult = await fetchBalancesForItem({ clientId, secret, accessToken });
+  if (balResult.error) return { error: balResult.error };
+  return applyBalanceToConnection({ supabaseUrl, serviceKey, conn, accounts: balResult.accounts });
 }
 
 // Sincroniza UM item (um login no banco) — puxa as transações de TODAS as contas
@@ -172,12 +186,18 @@ async function syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, co
     body: JSON.stringify({ cursor, last_synced_at: new Date().toISOString() }),
   });
 
-  // Atualiza saldo de cada conta desse item — e guarda qualquer erro pra mostrar
-  // pro usuário, em vez de falhar caladinho (era o que estava acontecendo).
+  // Busca o saldo de todas as contas desse item UMA VEZ SÓ (antes chamava a API
+  // repetida pra cada conta do mesmo login, o que podia esbarrar em limite de taxa
+  // e fazer as contas seguintes falharem silenciosamente).
   const balanceErrors = [];
-  for (const conn of connections) {
-    const result = await fetchAndStoreBalance({ supabaseUrl, serviceKey, clientId, secret, accessToken: item.plaid_access_token, conn });
-    if (result.error) balanceErrors.push(`${conn.account_name || conn.id}: ${result.error}`);
+  const balResult = await fetchBalancesForItem({ clientId, secret, accessToken: item.plaid_access_token });
+  if (balResult.error) {
+    balanceErrors.push(`(login inteiro) ${balResult.error}`);
+  } else {
+    for (const conn of connections) {
+      const result = await applyBalanceToConnection({ supabaseUrl, serviceKey, conn, accounts: balResult.accounts });
+      if (result.error) balanceErrors.push(`${conn.account_name || conn.id}: ${result.error}`);
+    }
   }
   await supaFetch(supabaseUrl, serviceKey, `plaid_connections?item_ref=eq.${item.id}`, {
     method: 'PATCH',
@@ -213,4 +233,4 @@ async function syncAllConnections({ supabaseUrl, serviceKey, clientId, secret })
   return results;
 }
 
-export { syncOneItem, syncAllConnections, plaidBaseUrl, fetchAndStoreBalance };
+export { syncOneItem, syncAllConnections, plaidBaseUrl, fetchAndStoreBalance, fetchBalancesForItem, applyBalanceToConnection };
