@@ -2055,6 +2055,15 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     return sum + Number(card?.minimum_payment||0);
   }, 0);
 
+  // Saldo total: pra cada despesa, se já foi paga usa o saldo real (aberto − pago);
+  // se ainda não foi paga, projeta pelo "a pagar" (aberto − a pagar).
+  const saldoTotalCard = rows.reduce((sum,r)=>{
+    const rowIsPaid = r.is_paid===true || r.expense_id!=null;
+    const open = Number(r.open_amount||0);
+    const deduction = rowIsPaid ? Number(r.paid_amount||0) : Number(r.minimum_payment||0);
+    return sum + (open - deduction);
+  }, 0);
+
   // Total disponível nas contas bancárias (mesmo dado do card "Contas Bancárias" no Resumo),
   // pra ver se dá pra cobrir os mínimos desse mês.
   const bankAccountsTotal = (cards||[])
@@ -2202,8 +2211,11 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
             <span className="muted">Total em aberto</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(totals.open)}</b>
           </div>
-          <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
             <span className="muted">Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(resumoMinimumTotal)}</b>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+            <span className="muted">Saldo total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:saldoTotalCard>=0?'var(--amber)':'var(--red)'}}>{fmtBRL(saldoTotalCard)}</b>
           </div>
         </div>
       )}
