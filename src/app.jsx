@@ -1700,39 +1700,66 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     try{
       const res = await fetch('/api/plaid-status');
       const data = await res.json();
-      if(res.ok) setBalances(data.connections||[]);
+      if(res.ok){ setBalances(data.connections||[]); return data.connections||[]; }
     }catch(e){ /* ignora */ }
+    return [];
   }
 
-  async function loadRows(){
+  async function loadRows(balancesData){
     setLoading(true);
+    const balList = balancesData || balances;
     const {data,error} = await client.from('bills_to_pay').select('*').eq('month_key',monthKey).order('created_at',{ascending:true});
     if(error){ setLoading(false); showToast('Erro: '+error.message); return; }
+
+    const balanceMap = {};
+    balList.forEach(b=>{ balanceMap[b.card_id]=b; });
+    function suggestedOpenFor(cardId){
+      const b = balanceMap[cardId];
+      const card = (cards||[]).find(c=>c.id===cardId);
+      if(b?.status==='connected' && b.current_balance!=null) return b.current_balance;
+      if(card?.manual_balance!=null) return card.manual_balance;
+      return null;
+    }
 
     // Garante que todo cartão de crédito cadastrado tenha uma linha nesse mês —
     // cria automaticamente as que ainda não existem, já com o saldo atual como sugestão.
     const creditCards = (cards||[]).filter(c=>(c.account_type||'credit')==='credit');
-    const existingCardIds = new Set((data||[]).filter(r=>r.card_id).map(r=>r.card_id));
-    const balanceMap = {};
-    balances.forEach(b=>{ balanceMap[b.card_id]=b; });
-    const missing = creditCards.filter(c=>!existingCardIds.has(c.id));
+    const existingByCardId = {};
+    (data||[]).forEach(r=>{ if(r.card_id) existingByCardId[r.card_id]=r; });
+    const missing = creditCards.filter(c=>!existingByCardId[c.id]);
 
     let allRows = data||[];
     if(missing.length>0){
-      const toInsert = missing.map(c=>{
-        const b = balanceMap[c.id];
-        const suggestedOpen = b?.status==='connected' ? b.current_balance : (c.manual_balance!=null ? c.manual_balance : null);
-        return { month_key: monthKey, card_id: c.id, description: c.name, open_amount: suggestedOpen };
-      });
+      const toInsert = missing.map(c=>({ month_key: monthKey, card_id: c.id, description: c.name, open_amount: suggestedOpenFor(c.id) }));
       const {data:inserted,error:insError} = await client.from('bills_to_pay').insert(toInsert).select();
       if(!insError && inserted) allRows = [...allRows, ...inserted];
     }
+
+    // Preenche automaticamente linhas que já existiam mas ficaram sem valor em aberto
+    // (ex: card criado antes do saldo do Plaid terminar de carregar da primeira vez).
+    const toBackfill = allRows.filter(r=>r.card_id && r.open_amount==null && suggestedOpenFor(r.card_id)!=null);
+    if(toBackfill.length>0){
+      await Promise.all(toBackfill.map(r=>
+        client.from('bills_to_pay').update({ open_amount: suggestedOpenFor(r.card_id) }).eq('id',r.id)
+      ));
+      allRows = allRows.map(r=>{
+        const bf = toBackfill.find(x=>x.id===r.id);
+        return bf ? {...r, open_amount: suggestedOpenFor(r.card_id)} : r;
+      });
+    }
+
     setRows(allRows.sort((a,b)=> (a.card_id?0:1) - (b.card_id?0:1) || new Date(a.created_at)-new Date(b.created_at)));
     setLoading(false);
   }
 
-  useEffect(()=>{ loadBalances(); },[]);
-  useEffect(()=>{ if(client && cards) loadRows(); },[monthKey, client, cards, balances.length]);
+  useEffect(()=>{
+    async function init(){
+      if(!client || !cards) return;
+      const bals = await loadBalances();
+      await loadRows(bals);
+    }
+    init();
+  },[monthKey, client, cards]);
 
   function changeMonth(delta){
     const d = new Date(monthKey+'-02');
