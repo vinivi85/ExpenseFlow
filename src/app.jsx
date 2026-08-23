@@ -2146,22 +2146,28 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             )}
             <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteBill(row)}>{row.card_id ? 'remover' : 'excluir'}</span>
           </div>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,gap:8}}>
-            <div className="muted" style={{fontSize:11,display:'flex',alignItems:'center',gap:4}}>
-              {cardMinimum!=null && (
-                <>
-                  Mínimo {'>'} {fmtBRL(cardMinimum)}
-                  {rowCard?.due_day!=null && <> || vence {String(rowCard.due_day).padStart(2,'0')}{rowCard.due_month!=null && '/'+String(rowCard.due_month).padStart(2,'0')}</>}
-                  {belowMinimum && (
-                    <span style={{cursor:'pointer'}} onClick={()=>showToast('⚠️ Mínimo abaixo do permitido — o cadastrado no Resumo é '+fmtBRL(cardMinimum))}>⚠️</span>
-                  )}
-                </>
-              )}
+          <div style={{marginBottom:8}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+              <div className="muted" style={{fontSize:11,display:'flex',alignItems:'center',gap:4}}>
+                {cardMinimum!=null && (
+                  <>
+                    Mínimo {'>'} {fmtBRL(cardMinimum)}
+                    {belowMinimum && (
+                      <span style={{cursor:'pointer'}} onClick={()=>showToast('⚠️ Mínimo abaixo do permitido — o cadastrado no Resumo é '+fmtBRL(cardMinimum))}>⚠️</span>
+                    )}
+                  </>
+                )}
+              </div>
+              <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,flexShrink:0}}>
+                <input type="checkbox" checked={isPaid} onChange={e=>togglePaid(row,e.target.checked)} />
+                Pago
+              </label>
             </div>
-            <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,flexShrink:0}}>
-              <input type="checkbox" checked={isPaid} onChange={e=>togglePaid(row,e.target.checked)} />
-              Pago
-            </label>
+            {rowCard?.due_day!=null && (
+              <div className="muted" style={{fontSize:11,marginTop:2}}>
+                vence {String(rowCard.due_day).padStart(2,'0')}{rowCard.due_month!=null && '/'+String(rowCard.due_month).padStart(2,'0')}
+              </div>
+            )}
           </div>
           <div className="row2" style={{marginBottom:8}}>
             <div className="field" style={{marginBottom:0}}>
