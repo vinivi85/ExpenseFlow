@@ -2151,6 +2151,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
               {cardMinimum!=null && (
                 <>
                   Mínimo {'>'} {fmtBRL(cardMinimum)}
+                  {rowCard?.due_day!=null && <> || vence {String(rowCard.due_day).padStart(2,'0')}{rowCard.due_month!=null && '/'+String(rowCard.due_month).padStart(2,'0')}</>}
                   {belowMinimum && (
                     <span style={{cursor:'pointer'}} onClick={()=>showToast('⚠️ Mínimo abaixo do permitido — o cadastrado no Resumo é '+fmtBRL(cardMinimum))}>⚠️</span>
                   )}
