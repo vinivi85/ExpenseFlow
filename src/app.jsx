@@ -2127,7 +2127,8 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
         const belowMinimum = cardMinimum!=null && Number(row.minimum_payment||0) < Number(cardMinimum) && Number(row.minimum_payment||0) > 0;
         const daysToDue = rowCard?.due_day!=null ? daysUntilNextDue(rowCard.due_day) : null;
         const isPaid = row.is_paid===true || row.expense_id!=null;
-        const dueSoon = daysToDue!=null && daysToDue<=3 && !isPaid;
+        const hasPaidValue = row.paid_amount!=null && row.paid_amount!=='';
+        const dueSoon = daysToDue!=null && daysToDue<=3 && !hasPaidValue;
         return (
         <div key={row.id} className="card" style={{marginBottom:10,position:'relative'}}>
           {dueSoon && (
