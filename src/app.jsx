@@ -1808,6 +1808,8 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
   const [loading,setLoading] = useState(true);
   const [savingId,setSavingId] = useState(null);
   const [addingBill,setAddingBill] = useState(false);
+  const [closingMonth,setClosingMonth] = useState(false);
+  const [confirmingClose,setConfirmingClose] = useState(false);
   const [newBill,setNewBill] = useState({description:'',open_amount:'',minimum_payment:'',paid_amount:''});
   const requestIdRef = useRef(0);
   const [checkingNew,setCheckingNew] = useState(false);
@@ -1933,6 +1935,51 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     const d = new Date(monthKey+'-02');
     d.setMonth(d.getMonth()+delta);
     setMonthKey(d.toISOString().slice(0,7));
+  }
+
+  function nextMonthKeyOf(mk){
+    const d = new Date(mk+'-02');
+    d.setMonth(d.getMonth()+1);
+    return d.toISOString().slice(0,7);
+  }
+
+  // Fecha o mês: pra cada despesa, calcula o que sobrou (saldo real se já foi
+  // paga, ou aberto − a pagar se não foi) e aplica isso como o novo "Valor em
+  // aberto" da mesma despesa no mês seguinte — criando a linha se ainda não existir.
+  async function closeMonth(){
+    setClosingMonth(true);
+    const nextKey = nextMonthKeyOf(monthKey);
+    const {data: nextRows, error: fetchErr} = await client.from('bills_to_pay').select('*').eq('month_key', nextKey);
+    if(fetchErr){ setClosingMonth(false); showToast('Erro: '+fetchErr.message); return; }
+
+    for(const row of rows){
+      const rowIsPaid = row.is_paid===true || row.expense_id!=null;
+      const open = Number(row.open_amount||0);
+      const deduction = rowIsPaid ? Number(row.paid_amount||0) : Number(row.minimum_payment||0);
+      const leftover = open - deduction;
+
+      const existing = row.card_id
+        ? (nextRows||[]).find(r=>r.card_id===row.card_id)
+        : (nextRows||[]).find(r=>!r.card_id && r.description===row.description);
+
+      if(existing){
+        await client.from('bills_to_pay').update({ open_amount: fmt2(leftover) }).eq('id', existing.id);
+      } else {
+        const card = row.card_id ? (cards||[]).find(c=>c.id===row.card_id) : null;
+        await client.from('bills_to_pay').insert({
+          month_key: nextKey,
+          card_id: row.card_id || null,
+          description: row.description,
+          open_amount: fmt2(leftover),
+          minimum_payment: card?.minimum_payment ?? row.minimum_payment ?? null
+        });
+      }
+    }
+
+    setClosingMonth(false);
+    setConfirmingClose(false);
+    showToast('Mês fechado — saldo aplicado em '+nextKey+' ✓');
+    setMonthKey(nextKey);
   }
 
   function updateLocal(id, field, value){
@@ -2274,6 +2321,24 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
           <div className="row2">
             <button className="btn btn-ghost" onClick={()=>{setAddingBill(false);setNewBill({description:'',open_amount:'',minimum_payment:'',paid_amount:''});}}>Cancelar</button>
             <button className="btn btn-primary" onClick={addStandaloneBill}>Adicionar</button>
+          </div>
+        </div>
+      )}
+
+      {!loading && rows.length>0 && !confirmingClose && (
+        <button className="btn btn-gold" style={{marginTop:16}} onClick={()=>setConfirmingClose(true)}>🔒 Fechar mês</button>
+      )}
+      {confirmingClose && (
+        <div className="card" style={{borderColor:'var(--amber)',marginTop:16}}>
+          <div style={{fontWeight:700,marginBottom:6,color:'var(--amber)'}}>⚠️ Fechar {monthLabel}?</div>
+          <p className="muted" style={{marginBottom:14}}>
+            Pra cada despesa, calcula o que sobrou (saldo real se já foi paga, ou aberto − a pagar se não foi) e aplica esse valor como o novo "Valor em aberto" da mesma despesa em {nextMonthKeyOf(monthKey)}. Se a linha do próximo mês já existir, o valor em aberto dela é sobrescrito.
+          </p>
+          <div className="row2">
+            <button className="btn btn-ghost" onClick={()=>setConfirmingClose(false)} disabled={closingMonth}>Cancelar</button>
+            <button className="btn btn-primary" onClick={closeMonth} disabled={closingMonth}>
+              {closingMonth ? <span className="spinner"></span> : 'Sim, fechar mês'}
+            </button>
           </div>
         </div>
       )}
