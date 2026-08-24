@@ -604,9 +604,6 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
   const [editingManualId,setEditingManualId] = useState(null);
   const [manualDraft,setManualDraft] = useState({limit:'',balance:''});
   const [savingManual,setSavingManual] = useState(false);
-  const [pendingReview,setPendingReview] = useState([]);
-  const [reviewChecks,setReviewChecks] = useState({}); // id -> bool (marcado pra importar)
-  const [confirmingReview,setConfirmingReview] = useState(false);
 
   async function loadBalances(){
     try{
@@ -616,35 +613,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       setBalances(data.connections||[]);
     }catch(e){ /* Plaid ainda não configurado, ignora */ }
   }
-  async function loadPendingReview(){
-    if(!client) return;
-    const {data,error} = await client.from('plaid_pending_transactions').select('*').order('date',{ascending:false});
-    if(!error) setPendingReview(data||[]);
-  }
-  useEffect(()=>{ loadBalances(); loadPendingReview(); },[]);
-
-  async function confirmReview(){
-    setConfirmingReview(true);
-    const toImport = pendingReview.filter(p=>reviewChecks[p.id]);
-    const toDiscard = pendingReview.filter(p=>!reviewChecks[p.id]);
-    if(toImport.length>0){
-      const rows = toImport.map(p=>({
-        description:p.description, amount:p.amount, category:p.category,
-        card:p.card, date:p.date, added_by:p.added_by, source:'plaid'
-      }));
-      const {error} = await client.from('expenses').insert(rows);
-      if(error){ setConfirmingReview(false); showToast('Erro: '+error.message); return; }
-    }
-    const allIds = pendingReview.map(p=>p.id);
-    if(allIds.length>0){
-      await client.from('plaid_pending_transactions').delete().in('id',allIds);
-    }
-    setConfirmingReview(false);
-    showToast(toImport.length+' importada(s), '+toDiscard.length+' descartada(s) ✓');
-    setReviewChecks({});
-    loadPendingReview();
-    if(reload) reload();
-  }
+  useEffect(()=>{ loadBalances(); },[]);
 
   function setSyncResult(msg){
     setSyncResultMsg(msg);
@@ -667,21 +636,22 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
         showToast(msg); setSyncResult({type:'info', text:msg, at:new Date(), action:'Sincronizar tudo'});
         return;
       }
-      const pendingMsg = data.totalPending>0 ? `, ${data.totalPending} pendente(s) de revisão` : '';
       const balErrs = (data.results||[]).flatMap(r=>r.balanceErrors||[]);
       let finalMsg, finalType;
       if(balErrs.length>0){
-        finalMsg = data.totalImported+' importada(s), mas erro no saldo: '+balErrs.join('; ');
+        finalMsg = data.totalPending+' pendente(s) de revisão em Lançamentos, mas erro no saldo: '+balErrs.join('; ');
         finalType = 'error';
+      } else if(data.totalPending>0){
+        finalMsg = data.totalPending+' nova(s) despesa(s) aguardando revisão em Lançamentos'+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓';
+        finalType = data.hadErrors ? 'error' : 'success';
       } else {
-        finalMsg = data.totalImported+' nova(s) despesa(s) importada(s)'+pendingMsg+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓';
+        finalMsg = 'Nada novo pra revisar'+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓';
         finalType = data.hadErrors ? 'error' : 'success';
       }
       showToast(finalMsg, balErrs.length>0?6000:2600);
       setSyncResult({type:finalType, text:finalMsg, at:new Date(), action:'Sincronizar tudo'});
       if(reload) reload();
       loadBalances();
-      if(loadPendingReview) loadPendingReview();
     }catch(e){
       setSyncing(false);
       const msg = 'Erro ao sincronizar: '+e.message;
@@ -901,32 +871,6 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       )}
       {!syncResultMsg && <div style={{marginBottom:16}}></div>}
 
-      {pendingReview.length>0 && (
-        <>
-          <div className="section-title">⚠️ {pendingReview.length} transação(ões) do Plaid pra revisar</div>
-          <div className="card" style={{borderColor:'var(--red)'}}>
-            <p className="muted" style={{marginBottom:12}}>Pareciam duplicatas de algo já lançado (mesma data, valor e cartão, descrição diferente). Marca as que forem despesas de verdade diferentes — o resto é descartado.</p>
-            {pendingReview.map(p=>(
-              <div className="rev-row" key={p.id}>
-                <div className="r1">
-                  <label style={{display:'flex',gap:8,alignItems:'center'}}>
-                    <input type="checkbox" checked={!!reviewChecks[p.id]} onChange={e=>setReviewChecks({...reviewChecks,[p.id]:e.target.checked})} />
-                    {p.description}
-                  </label>
-                  <span style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(Number(p.amount))}</span>
-                </div>
-                <p className="muted" style={{marginTop:4,marginBottom:0,fontSize:11.5}}>
-                  Parece com <b>"{p.matched_description}"</b> já lançada em {new Date(p.date).toLocaleDateString('pt-BR')}{p.card?' no '+p.card:''}.
-                </p>
-              </div>
-            ))}
-            <button className="btn btn-primary" style={{marginTop:8}} onClick={confirmReview} disabled={confirmingReview}>
-              {confirmingReview ? <span className="spinner"></span> : 'Confirmar (importa marcadas, descarta o resto)'}
-            </button>
-          </div>
-        </>
-      )}
-
       <div className="section-title">Por categoria</div>
       <div className="card">
         {catList.length===0 && <div className="empty"><span className="big">🗒️</span>Nenhum gasto nesse período.</div>}
@@ -1122,6 +1066,59 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
   const [selectedIds,setSelectedIds] = useState([]);
   const [confirmingDeleteId,setConfirmingDeleteId] = useState(null);
   const [deletingSelected,setDeletingSelected] = useState(false);
+  const [pendingReview,setPendingReview] = useState([]);
+  const [reviewDrafts,setReviewDrafts] = useState({});
+  const [reviewExpanded,setReviewExpanded] = useState(false);
+  const [confirmingReview,setConfirmingReview] = useState(false);
+
+  async function loadPendingReview(){
+    if(!client) return;
+    const {data,error} = await client.from('plaid_pending_transactions').select('*').order('date',{ascending:false});
+    if(error) return;
+    setPendingReview(data||[]);
+    setReviewDrafts(prev=>{
+      const next = {...prev};
+      (data||[]).forEach(p=>{
+        if(!next[p.id]) next[p.id] = { description:p.description, category:p.category||'Outros', card:p.card||'', amount:fmt2(p.amount), date:(p.date||'').slice(0,10), added_by:p.added_by, include:true };
+      });
+      return next;
+    });
+  }
+  useEffect(()=>{ loadPendingReview(); },[client]);
+
+  function updateReviewDraft(id, field, value){
+    setReviewDrafts(prev=>({...prev, [id]:{...prev[id], [field]:value}}));
+  }
+
+  async function confirmReviewItems(){
+    setConfirmingReview(true);
+    const toImport = pendingReview.filter(p=>reviewDrafts[p.id]?.include);
+    const toDiscard = pendingReview.filter(p=>!reviewDrafts[p.id]?.include);
+    if(toImport.length>0){
+      const rows = toImport.map(p=>{
+        const d = reviewDrafts[p.id];
+        return {
+          description: (d.description||'').trim() || p.description,
+          amount: parseFloat(String(d.amount).replace(',','.'))||0,
+          category: d.category || 'Outros',
+          card: d.card || null,
+          date: d.date,
+          added_by: d.added_by,
+          source: 'plaid'
+        };
+      });
+      const {error} = await client.from('expenses').insert(rows);
+      if(error){ setConfirmingReview(false); showToast('Erro: '+error.message); return; }
+    }
+    const allIds = pendingReview.map(p=>p.id);
+    if(allIds.length>0) await client.from('plaid_pending_transactions').delete().in('id',allIds);
+    setConfirmingReview(false);
+    showToast(toImport.length+' lançada(s), '+toDiscard.length+' descartada(s) ✓');
+    setReviewExpanded(false);
+    setReviewDrafts({});
+    loadPendingReview();
+    reload();
+  }
 
   function toggleSelect(id){
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
@@ -1288,6 +1285,53 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
           style={{flex:1}}
         />
       </div>
+
+      {pendingReview.length>0 && (
+        <div className="card" style={{marginBottom:14,borderColor:'var(--amber)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'}} onClick={()=>setReviewExpanded(!reviewExpanded)}>
+            <div style={{fontWeight:700,fontSize:13,color:'var(--amber)'}}>🔁 {pendingReview.length} novo(s) lançamento(s) do Plaid pra revisar</div>
+            <span style={{fontSize:20,color:'var(--amber)',fontWeight:800,lineHeight:1}}>{reviewExpanded ? '−' : '+'}</span>
+          </div>
+          {reviewExpanded && (
+            <div style={{marginTop:14}}>
+              {pendingReview.map(p=>{
+                const d = reviewDrafts[p.id] || {};
+                return (
+                  <div className="rev-row" key={p.id} style={d.include===false?{opacity:0.5}:undefined}>
+                    <label style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}>
+                      <input type="checkbox" checked={d.include!==false} onChange={e=>updateReviewDraft(p.id,'include',e.target.checked)} />
+                      <input value={d.description??''} onChange={e=>updateReviewDraft(p.id,'description',e.target.value)} placeholder="Descrição" style={{flex:1}} />
+                    </label>
+                    {p.matched_description && (
+                      <p className="muted" style={{fontSize:11,marginBottom:8}}>Parece com <b>"{p.matched_description}"</b> já lançada — confere se não é a mesma antes de confirmar.</p>
+                    )}
+                    <div className="row2" style={{marginBottom:8}}>
+                      <input value={d.amount??''} onChange={e=>updateReviewDraft(p.id,'amount',e.target.value)} onBlur={()=>updateReviewDraft(p.id,'amount',fmt2(d.amount))} placeholder="Valor" inputMode="decimal" />
+                      <DateField value={d.date} onChange={val=>updateReviewDraft(p.id,'date',val)} />
+                    </div>
+                    <div className="row2" style={{marginBottom:8}}>
+                      <select value={d.added_by} onChange={e=>updateReviewDraft(p.id,'added_by',e.target.value)}>
+                        {users.map(u=><option key={u} value={u}>{u}</option>)}
+                      </select>
+                      <select value={d.category} onChange={e=>updateReviewDraft(p.id,'category',e.target.value)}>
+                        {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <select value={d.card} onChange={e=>updateReviewDraft(p.id,'card',e.target.value)}>
+                      <option value="">Sem cartão / não sei</option>
+                      {cards.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                );
+              })}
+              <button className="btn btn-primary" style={{marginTop:8}} onClick={confirmReviewItems} disabled={confirmingReview}>
+                {confirmingReview ? <span className="spinner"></span> : 'Confirmar (lança marcadas, descarta o resto)'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {confirmingClear && (
         <div className="card" style={{borderColor:'var(--red)'}}>
           <div style={{fontWeight:700,marginBottom:6,color:'var(--red)'}}>⚠️ Apagar os lançamentos filtrados?</div>
@@ -2505,14 +2549,17 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
         setCardSyncResult(cardId, {type:'error',text:msg,at:new Date(),action:'sincronizar'});
         return;
       }
-      const pendingMsg = data.pending>0 ? `, ${data.pending} pendente(s) de revisão` : '';
       let finalMsg, finalType;
       if(data.balanceErrors && data.balanceErrors.length>0){
-        finalMsg = data.imported+' importada(s), mas erro no saldo: '+data.balanceErrors.join('; ');
+        finalMsg = data.pending+' pendente(s) de revisão em Lançamentos, mas erro no saldo: '+data.balanceErrors.join('; ');
         finalType = 'error';
         showToast('"'+cardName+'": '+finalMsg, 6000);
+      } else if(data.pending>0){
+        finalMsg = data.pending+' nova(s) despesa(s) aguardando revisão em Lançamentos ✓';
+        finalType = 'success';
+        showToast('"'+cardName+'": '+finalMsg);
       } else {
-        finalMsg = data.imported+' nova(s) despesa(s) importada(s)'+pendingMsg+' ✓';
+        finalMsg = 'Nada novo pra revisar ✓';
         finalType = 'success';
         showToast('"'+cardName+'": '+finalMsg);
       }

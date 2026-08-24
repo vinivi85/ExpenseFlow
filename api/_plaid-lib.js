@@ -131,9 +131,9 @@ async function syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, co
       };
     });
 
-  // Busca despesas já existentes pra checar duplicata antes de inserir — a sincronização
-  // roda sozinha (cron, botão "Sincronizar tudo"), sem tela pra perguntar na hora.
-  const toInsert = [];
+  // Busca despesas já existentes só pra checar duplicata EXATA (essa continua pulando
+  // sozinha, sem nem entrar na revisão). Todo o resto — mesmo sem parecer duplicata
+  // nenhuma — vai pra fila de revisão em Lançamentos, não entra direto em expenses.
   const toPending = [];
   if (candidates.length > 0) {
     const existingRes = await supaFetch(supabaseUrl, serviceKey, 'expenses?select=description,amount,card,date');
@@ -142,30 +142,14 @@ async function syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, co
     const exactSigs = new Set(existing.map(e => sig(e.date, e.description, e.amount)));
 
     for (const c of candidates) {
-      if (exactSigs.has(sig(c.date, c.description, c.amount))) continue; // duplicata exata — pula, nem insere nem manda pra revisão
+      if (exactSigs.has(sig(c.date, c.description, c.amount))) continue; // duplicata exata — pula, nem manda pra revisão
       const possibleMatch = existing.find(e =>
         e.date === c.date &&
         Math.abs(Number(e.amount) - Number(c.amount)) < 0.01 &&
         (e.card || '').trim().toLowerCase() === (c.card || '').trim().toLowerCase() &&
         (e.description || '').trim().toLowerCase() !== c.description.trim().toLowerCase()
       );
-      if (possibleMatch) {
-        toPending.push({ ...c, matched_description: possibleMatch.description });
-      } else {
-        toInsert.push(c);
-      }
-    }
-  }
-
-  if (toInsert.length > 0) {
-    const insertRes = await supaFetch(supabaseUrl, serviceKey, 'expenses', {
-      method: 'POST',
-      headers: { 'Prefer': 'return=minimal' },
-      body: JSON.stringify(toInsert),
-    });
-    if (!insertRes.ok) {
-      const errText = await insertRes.text();
-      return { error: 'Erro ao salvar despesas: ' + errText };
+      toPending.push({ ...c, matched_description: possibleMatch ? possibleMatch.description : null });
     }
   }
 
@@ -204,7 +188,7 @@ async function syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, co
     body: JSON.stringify({ status: 'connected', last_synced_at: new Date().toISOString() }),
   });
 
-  return { imported: toInsert.length, pending: toPending.length, balanceErrors: balanceErrors.length ? balanceErrors : undefined };
+  return { imported: 0, pending: toPending.length, balanceErrors: balanceErrors.length ? balanceErrors : undefined };
 }
 
 // Sincroniza TODOS os items (logins) ativos de uma vez (usado pelo botão "Sincronizar tudo" e pelo cron).
