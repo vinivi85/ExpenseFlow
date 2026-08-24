@@ -1286,14 +1286,16 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
         />
       </div>
 
-      {pendingReview.length>0 && (
-        <div className="card" style={{marginBottom:14,borderColor:'var(--amber)'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'}} onClick={()=>setReviewExpanded(!reviewExpanded)}>
-            <div style={{fontWeight:700,fontSize:13,color:'var(--amber)'}}>🔁 {pendingReview.length} novo(s) lançamento(s) do Plaid pra revisar</div>
-            <span style={{fontSize:20,color:'var(--amber)',fontWeight:800,lineHeight:1}}>{reviewExpanded ? '−' : '+'}</span>
-          </div>
-          {reviewExpanded && (
-            <div style={{marginTop:14}}>
+      <div className="card" style={{marginBottom:14,borderColor:'var(--amber)',opacity:pendingReview.length===0?0.6:1}}>
+        <div
+          style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:pendingReview.length>0?'pointer':'default'}}
+          onClick={()=>{ if(pendingReview.length>0) setReviewExpanded(!reviewExpanded); }}
+        >
+          <div style={{fontWeight:700,fontSize:13,color:'var(--amber)'}}>🔁 {pendingReview.length} novo(s) lançamento(s) do Plaid pra revisar</div>
+          {pendingReview.length>0 && <span style={{fontSize:20,color:'var(--amber)',fontWeight:800,lineHeight:1}}>{reviewExpanded ? '−' : '+'}</span>}
+        </div>
+        {reviewExpanded && pendingReview.length>0 && (
+          <div style={{marginTop:14}}>
               {pendingReview.map(p=>{
                 const d = reviewDrafts[p.id] || {};
                 return (
@@ -1330,7 +1332,6 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
             </div>
           )}
         </div>
-      )}
 
       {confirmingClear && (
         <div className="card" style={{borderColor:'var(--red)'}}>
