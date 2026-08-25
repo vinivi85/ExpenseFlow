@@ -1859,7 +1859,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
   const [addingBill,setAddingBill] = useState(false);
   const [closingMonth,setClosingMonth] = useState(false);
   const [confirmingClose,setConfirmingClose] = useState(false);
-  const [newBill,setNewBill] = useState({description:'',open_amount:'',minimum_payment:'',paid_amount:''});
+  const [newBill,setNewBill] = useState({description:'',open_amount:'',minimum_payment:'',paid_amount:'',dueDay:'',dueMonth:''});
   const requestIdRef = useRef(0);
   const [checkingNew,setCheckingNew] = useState(false);
   const [pendingNewCards,setPendingNewCards] = useState([]);
@@ -2131,10 +2131,12 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
       minimum_payment: newBill.minimum_payment ? parseFloat(newBill.minimum_payment.replace(',','.')) : null,
       paid_amount: newBill.paid_amount ? parseFloat(newBill.paid_amount.replace(',','.')) : null,
       paid_date: paidDate,
-      expense_id: match ? match.id : null
+      expense_id: match ? match.id : null,
+      due_day: newBill.dueDay ? Math.max(1,Math.min(31,parseInt(newBill.dueDay,10))) : null,
+      due_month: newBill.dueMonth ? Math.max(1,Math.min(12,parseInt(newBill.dueMonth,10))) : null
     });
     if(error){ showToast('Erro: '+error.message); return; }
-    setNewBill({description:'',open_amount:'',minimum_payment:'',paid_amount:''});
+    setNewBill({description:'',open_amount:'',minimum_payment:'',paid_amount:'',dueDay:'',dueMonth:''});
     setAddingBill(false);
     loadRows();
   }
@@ -2225,7 +2227,9 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
         const rowCard = row.card_id ? (cards||[]).find(c=>c.id===row.card_id) : null;
         const cardMinimum = rowCard?.minimum_payment;
         const belowMinimum = cardMinimum!=null && Number(row.minimum_payment||0) < Number(cardMinimum) && Number(row.minimum_payment||0) > 0;
-        const daysToDue = rowCard?.due_day!=null ? daysUntilNextDue(rowCard.due_day) : null;
+        const effectiveDueDay = rowCard?.due_day ?? row.due_day;
+        const effectiveDueMonth = rowCard?.due_month ?? row.due_month;
+        const daysToDue = effectiveDueDay!=null ? daysUntilNextDue(effectiveDueDay) : null;
         const isPaid = row.is_paid===true || row.expense_id!=null;
         const hasPaidValue = row.paid_amount!=null && row.paid_amount!=='';
         const dueSoon = daysToDue!=null && daysToDue<=3 && !hasPaidValue;
@@ -2264,9 +2268,9 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
                 Pago
               </label>
             </div>
-            {rowCard?.due_day!=null && (
+            {effectiveDueDay!=null && (
               <div className="muted" style={{fontSize:11,marginTop:2}}>
-                vence {String(rowCard.due_day).padStart(2,'0')}{rowCard.due_month!=null && '/'+String(rowCard.due_month).padStart(2,'0')}
+                vence {String(effectiveDueDay).padStart(2,'0')}{effectiveDueMonth!=null && '/'+String(effectiveDueMonth).padStart(2,'0')}
               </div>
             )}
           </div>
@@ -2371,8 +2375,18 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             <label>Valor pago</label>
             <input value={newBill.paid_amount} onChange={e=>setNewBill({...newBill,paid_amount:e.target.value})} onBlur={()=>setNewBill(nb=>({...nb,paid_amount:fmt2(nb.paid_amount)}))} placeholder="0,00" inputMode="decimal" />
           </div>
+          <div className="row2" style={{marginBottom:14}}>
+            <div className="field" style={{marginBottom:0}}>
+              <label>Vencimento — dia</label>
+              <input value={newBill.dueDay} onChange={e=>setNewBill({...newBill,dueDay:e.target.value})} placeholder="Ex: 15" inputMode="numeric" maxLength={2} />
+            </div>
+            <div className="field" style={{marginBottom:0}}>
+              <label>Vencimento — mês</label>
+              <input value={newBill.dueMonth} onChange={e=>setNewBill({...newBill,dueMonth:e.target.value})} placeholder="Ex: 08" inputMode="numeric" maxLength={2} />
+            </div>
+          </div>
           <div className="row2">
-            <button className="btn btn-ghost" onClick={()=>{setAddingBill(false);setNewBill({description:'',open_amount:'',minimum_payment:'',paid_amount:''});}}>Cancelar</button>
+            <button className="btn btn-ghost" onClick={()=>{setAddingBill(false);setNewBill({description:'',open_amount:'',minimum_payment:'',paid_amount:'',dueDay:'',dueMonth:''});}}>Cancelar</button>
             <button className="btn btn-primary" onClick={addStandaloneBill}>Adicionar</button>
           </div>
         </div>
@@ -3092,10 +3106,14 @@ create table if not exists bills_to_pay (
   paid_date date,
   expense_id uuid references expenses(id) on delete set null,
   is_paid boolean default false,
+  due_day integer,
+  due_month integer,
   created_at timestamp default now()
 );
 
 alter table bills_to_pay add column if not exists is_paid boolean default false;
+alter table bills_to_pay add column if not exists due_day integer;
+alter table bills_to_pay add column if not exists due_month integer;
 
 alter table bills_to_pay enable row level security;
 
