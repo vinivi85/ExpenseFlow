@@ -2170,9 +2170,9 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
       const value = connected ? (b.available_balance ?? b.current_balance ?? 0) : (c.manual_balance ?? 0);
       return sum + Number(value||0);
     }, 0);
-  // Saldo do mês = Total em contas − Total pago (marcadas) − Total a pagar em
-  // aberto (não pagas). Usa o valor "A pagar" salvo em cada linha (que pode ter
-  // sido ajustado manualmente ali), não o mínimo cadastrado no Resumo.
+  // Saldo do mês = Total em contas − Total a pagar em aberto (não pagas). O que já
+  // foi pago não entra na subtração — o saldo da conta (vindo do Plaid/ao vivo) já
+  // reflete esse dinheiro saindo sozinho; subtrair de novo contaria em dobro.
   const totalPaidMarked = rows.reduce((sum,r)=>{
     const rowIsPaid = r.is_paid===true || r.expense_id!=null;
     return sum + (rowIsPaid ? Number(r.paid_amount||0) : 0);
@@ -2181,7 +2181,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     const rowIsPaid = r.is_paid===true || r.expense_id!=null;
     return sum + (!rowIsPaid ? Number(r.minimum_payment||0) : 0);
   }, 0);
-  const monthBalance = bankAccountsTotal - totalPaidMarked - totalOpenUnpaid;
+  const monthBalance = bankAccountsTotal - totalOpenUnpaid;
 
   return (
     <div>
@@ -2331,7 +2331,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             <span className="muted">Total em contas (Resumo)</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(bankAccountsTotal)}</b>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
-            <span className="muted">− Total pago (marcadas)</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(totalPaidMarked)}</b>
+            <span className="muted">Total pago (informativo)</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(totalPaidMarked)}</b>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:8}}>
             <span className="muted">− Total a pagar em aberto</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--amber)'}}>{fmtBRL(totalOpenUnpaid)}</b>
@@ -2340,7 +2340,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
             <span style={{fontWeight:700}}>Saldo</span>
             <b style={{fontFamily:'JetBrains Mono, monospace',color:monthBalance>=0?'var(--green)':'var(--red)'}}>{fmtBRL(monthBalance)}</b>
           </div>
-          <p className="muted" style={{marginTop:8,fontSize:10.5}}>Contas marcadas como "Pago" entram pelo valor pago; as demais entram pelo "A pagar" de cada uma.</p>
+          <p className="muted" style={{marginTop:8,fontSize:10.5}}>O total pago não entra na conta — o saldo da conta já reflete esse dinheiro saindo sozinho. Só o que ainda está em aberto é descontado.</p>
         </div>
       )}
 
