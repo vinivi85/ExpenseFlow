@@ -2326,7 +2326,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
 
       {!loading && (
         <div className="card" style={{borderColor:'var(--green)'}}>
-          <div style={{fontWeight:700,marginBottom:8,fontSize:13}}>Saldo do mês</div>
+          <div style={{fontWeight:700,marginBottom:8,fontSize:13}}>Saldo de {monthLabel}</div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
             <span className="muted">Total em contas (Resumo)</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(bankAccountsTotal)}</b>
           </div>
