@@ -1922,7 +1922,11 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
       minimum_payment: r.minimum_payment!=null ? fmt2(r.minimum_payment) : r.minimum_payment,
       paid_amount: r.paid_amount!=null ? fmt2(r.paid_amount) : r.paid_amount,
     }));
-    setRows(formattedRows.sort((a,b)=> (a.card_id?0:1) - (b.card_id?0:1) || new Date(a.created_at)-new Date(b.created_at)));
+    setRows(formattedRows.sort((a,b)=>{
+      const aPaid = (a.is_paid===true || a.expense_id!=null) ? 1 : 0;
+      const bPaid = (b.is_paid===true || b.expense_id!=null) ? 1 : 0;
+      return aPaid - bPaid || (a.card_id?0:1) - (b.card_id?0:1) || new Date(a.created_at)-new Date(b.created_at);
+    }));
     setLoading(false);
   }
 
