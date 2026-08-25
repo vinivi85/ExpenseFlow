@@ -149,7 +149,8 @@ async function syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, co
         (e.card || '').trim().toLowerCase() === (c.card || '').trim().toLowerCase() &&
         (e.description || '').trim().toLowerCase() !== c.description.trim().toLowerCase()
       );
-      toPending.push({ ...c, matched_description: possibleMatch ? possibleMatch.description : null });
+      const { source, ...cWithoutSource } = c;
+      toPending.push({ ...cWithoutSource, matched_description: possibleMatch ? possibleMatch.description : null });
     }
   }
 
