@@ -2230,7 +2230,7 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
         const hasPaidValue = row.paid_amount!=null && row.paid_amount!=='';
         const dueSoon = daysToDue!=null && daysToDue<=3 && !hasPaidValue;
         return (
-        <div key={row.id} className="card" style={{marginBottom:10,position:'relative'}}>
+        <div key={row.id} className="card" style={{marginBottom:10,position:'relative',background:isPaid?'var(--green-dim)':undefined,borderColor:isPaid?'var(--green)':undefined}}>
           {dueSoon && (
             <div style={{marginBottom:8,padding:'6px 10px',background:'rgba(220,38,38,0.08)',border:'1px solid var(--red)',borderRadius:6,fontSize:11.5,color:'var(--red)',fontWeight:700}}>
               ⚠️ Vencimento em {daysToDue<=0 ? 'hoje ou já passou' : daysToDue+' dia'+(daysToDue>1?'s':'')}
