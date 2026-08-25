@@ -637,18 +637,22 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
         return;
       }
       const balErrs = (data.results||[]).flatMap(r=>r.balanceErrors||[]);
+      const itemErrs = (data.results||[]).filter(r=>r.error).map(r=>`${r.institution||'Banco'}: ${r.error}`);
       let finalMsg, finalType;
-      if(balErrs.length>0){
-        finalMsg = data.totalPending+' pendente(s) de revisão em Lançamentos, mas erro no saldo: '+balErrs.join('; ');
+      if(balErrs.length>0 || itemErrs.length>0){
+        const parts = [];
+        if(itemErrs.length>0) parts.push('erro na sincronização: '+itemErrs.join('; '));
+        if(balErrs.length>0) parts.push('erro no saldo: '+balErrs.join('; '));
+        finalMsg = data.totalPending+' pendente(s) de revisão em Lançamentos, mas '+parts.join(' | ');
         finalType = 'error';
       } else if(data.totalPending>0){
-        finalMsg = data.totalPending+' nova(s) despesa(s) aguardando revisão em Lançamentos'+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓';
-        finalType = data.hadErrors ? 'error' : 'success';
+        finalMsg = data.totalPending+' nova(s) despesa(s) aguardando revisão em Lançamentos ✓';
+        finalType = 'success';
       } else {
-        finalMsg = 'Nada novo pra revisar'+(data.hadErrors?' (algum cartão deu erro)':'')+' ✓';
-        finalType = data.hadErrors ? 'error' : 'success';
+        finalMsg = 'Nada novo pra revisar ✓';
+        finalType = 'success';
       }
-      showToast(finalMsg, balErrs.length>0?6000:2600);
+      showToast(finalMsg, (balErrs.length>0||itemErrs.length>0)?6500:2600);
       setSyncResult({type:finalType, text:finalMsg, at:new Date(), action:'Sincronizar tudo'});
       if(reload) reload();
       loadBalances();
