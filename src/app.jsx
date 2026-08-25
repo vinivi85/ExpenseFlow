@@ -1937,22 +1937,22 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
     const creditCards = (cards||[]).filter(c=>(c.account_type||'credit')==='credit');
     const missing = creditCards.filter(c=>!existingIds.has(c.id));
 
-    // Pras que já existem na lista, atualiza o mínimo pro valor cadastrado no Resumo agora
+    // Pras linhas que já existem, atualiza SÓ o "Valor em aberto" com o saldo atual
+    // do cartão (Resumo/Plaid). Não mexe em mínimo, a pagar, valor pago nem checkbox.
     const toSync = existingRows.filter(r=>{
       if(!r.card_id) return false;
-      const card = creditCards.find(c=>c.id===r.card_id);
-      return card && card.minimum_payment!=null && Number(card.minimum_payment)!==Number(r.minimum_payment||0);
+      const suggested = suggestedOpenFor(r.card_id, bals);
+      return suggested!=null && Number(suggested)!==Number(r.open_amount||0);
     });
     if(toSync.length>0){
-      await Promise.all(toSync.map(r=>{
-        const card = creditCards.find(c=>c.id===r.card_id);
-        return client.from('bills_to_pay').update({ minimum_payment: card.minimum_payment }).eq('id',r.id);
-      }));
+      await Promise.all(toSync.map(r=>
+        client.from('bills_to_pay').update({ open_amount: fmt2(suggestedOpenFor(r.card_id, bals)) }).eq('id',r.id)
+      ));
     }
 
     setCheckingNew(false);
     if(missing.length===0 && toSync.length===0){ showToast('Nenhuma novidade — lista já está atualizada'); loadRows(bals); return; }
-    if(toSync.length>0){ showToast(toSync.length+' mínimo(s) atualizado(s) do Resumo ✓'); loadRows(bals); }
+    if(toSync.length>0){ showToast(toSync.length+' valor(es) em aberto atualizado(s) do saldo atual ✓'); loadRows(bals); }
     if(missing.length>0){
       setPendingNewCards(missing.map(c=>({ id:c.id, name:c.name, suggestedOpen: suggestedOpenFor(c.id,bals), suggestedMinimum: c.minimum_payment, checked:true })));
     }
