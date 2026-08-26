@@ -390,6 +390,10 @@ function DateField({value,onChange}){
   );
 }
 
+// Injetado no build via esbuild --define, pra saber na hora se o app na tela é
+// a versão mais recente (ajuda a diagnosticar cache de PWA/navegador).
+const APP_VERSION = typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : 'dev';
+
 function App(){
   const [cfg,setCfg] = useState(loadCfg());
   const [user,setUser] = useState(localStorage.getItem('gastos_user')||ALL_VIEW);
@@ -3030,6 +3034,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
         <div style={{fontWeight:700,marginBottom:8,fontSize:13}}>SQL para rodar no Supabase</div>
         <textarea readOnly rows="14" style={{fontFamily:'JetBrains Mono, monospace',fontSize:11.5}} value={SQL_SCHEMA}></textarea>
       </div>
+      <p className="muted" style={{textAlign:'center',fontSize:11,marginTop:4}}>Versão: {APP_VERSION}</p>
     </div>
   );
   if(embedded) return body;
