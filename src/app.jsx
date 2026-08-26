@@ -1909,8 +1909,8 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     return null;
   }
 
-  async function loadRows(balancesData, requestId){
-    setLoading(true);
+  async function loadRows(balancesData, requestId, withSpinner){
+    if(withSpinner) setLoading(true);
     const balList = balancesData || balances;
     const {data,error} = await client.from('bills_to_pay').select('*').eq('month_key',monthKey).order('created_at',{ascending:true});
     if(error){ setLoading(false); showToast('Erro: '+error.message); return; }
@@ -1971,8 +1971,8 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     }
 
     setCheckingNew(false);
-    if(missing.length===0 && toSync.length===0){ showToast('Nenhuma novidade — lista já está atualizada'); loadRows(bals); return; }
-    if(toSync.length>0){ showToast(toSync.length+' valor(es) em aberto atualizado(s) do saldo atual ✓'); loadRows(bals); }
+    if(missing.length===0 && toSync.length===0){ showToast('Nenhuma novidade — lista já está atualizada'); loadRows(bals, null, true); return; }
+    if(toSync.length>0){ showToast(toSync.length+' valor(es) em aberto atualizado(s) do saldo atual ✓'); loadRows(bals, null, true); }
     if(missing.length>0){
       setPendingNewCards(missing.map(c=>({ id:c.id, name:c.name, suggestedOpen: suggestedOpenFor(c.id,bals), suggestedMinimum: c.minimum_payment, checked:true })));
     }
@@ -1986,7 +1986,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     if(error){ showToast('Erro: '+error.message); return; }
     showToast(toAdd.length+' cartão(ões) adicionado(s) ✓');
     setPendingNewCards([]);
-    loadRows(balances);
+    loadRows(balances, null, true);
   }
 
   useEffect(()=>{
@@ -1995,7 +1995,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
       const myId = ++requestIdRef.current;
       const bals = await loadBalances();
       if(requestIdRef.current !== myId) return; // uma carga mais nova já começou, descarta essa
-      await loadRows(bals, myId);
+      await loadRows(bals, myId, true);
     }
     init();
   },[monthKey, client, cards]);
