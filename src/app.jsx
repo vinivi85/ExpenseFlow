@@ -2074,16 +2074,15 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
 
     const today = new Date(); today.setHours(0,0,0,0);
     const cutoff = new Date(today.getTime() - consolidationDays*86400000);
-    const cardName = row.card_id ? row.description : null;
 
+    // Não exige bater o cartão: o campo "Cartão/Fonte" de um pagamento normalmente é
+    // a conta de onde saiu o dinheiro (o banco), não o cartão que está sendo pago —
+    // então nunca ia bater com o nome do cartão cadastrado em A Pagar.
     const candidates = (expenses||[]).filter(e=>{
       if(!creditCategoryNames.has(e.category)) return false;
       const eDate = new Date(e.date+'T00:00:00');
       if(eDate < cutoff || eDate > today) return false;
-      const sameAmount = Math.abs(Number(e.amount)-paid) < 0.01;
-      if(!sameAmount) return false;
-      if(cardName) return (e.card||'').trim().toLowerCase()===cardName.trim().toLowerCase();
-      return true; // conta avulsa: sem cartão pra comparar, aceita por categoria+valor+data só
+      return Math.abs(Number(e.amount)-paid) < 0.01;
     });
     return candidates[0] || null;
   }
