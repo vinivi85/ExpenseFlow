@@ -579,7 +579,7 @@ function App(){
         {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} periodLabel={periodLabels[period]} dateMatchesPeriod={dateMatchesPeriod} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='proj' && <ProjectionTab expenses={expenses} client={client} reload={loadExpenses} showToast={showToast} />}
         {tab==='addimport' && <AddOrImportTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} expenses={expenses} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
-        {tab==='payables' && <PayablesTab client={client} cards={cards} users={userNames} expenses={expenses} reload={loadExpenses} showToast={showToast} />}
+        {tab==='payables' && <PayablesTab client={client} cards={cards} categories={categories} users={userNames} expenses={expenses} reload={loadExpenses} showToast={showToast} />}
         {tab==='cfg' && <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} embedded categories={categories} users={users} cards={cards} client={client} reloadCategories={loadCategories} reloadUsers={loadUsers} reloadCards={loadCards} reloadExpenses={loadExpenses} showToast={showToast} />}
       </div>
 
@@ -1850,7 +1850,7 @@ ${pdfText.slice(0, 30000)}`;
 // automaticamente (com saldo do Plaid/manual quando tiver) e permite adicionar
 // contas avulsas (mortgage, AT&T, etc.). Quando "Valor pago" é preenchido, cria
 // ou atualiza um lançamento com categoria "Pagamento Efetuado" (crédito).
-function PayablesTab({client,cards,users,expenses,reload,showToast}){
+function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
   const [monthKey,setMonthKey] = useState(new Date().toISOString().slice(0,7));
   const [rows,setRows] = useState([]);
   const [balances,setBalances] = useState([]);
@@ -1858,6 +1858,18 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
   const [savingId,setSavingId] = useState(null);
   const [addingBill,setAddingBill] = useState(false);
   const [closingMonth,setClosingMonth] = useState(false);
+  const [consolidationDays,setConsolidationDays] = useState(7);
+  const [matchConfirm,setMatchConfirm] = useState(null); // {rowId, candidate}
+  const [confirmingMatch,setConfirmingMatch] = useState(false);
+
+  useEffect(()=>{
+    async function loadSettings(){
+      if(!client) return;
+      const {data} = await client.from('app_settings').select('consolidation_days').eq('id',1).single();
+      if(data?.consolidation_days!=null) setConsolidationDays(data.consolidation_days);
+    }
+    loadSettings();
+  },[client]);
   const [confirmingClose,setConfirmingClose] = useState(false);
   const [newBill,setNewBill] = useState({description:'',open_amount:'',minimum_payment:'',paid_amount:'',dueDay:'',dueMonth:''});
   const requestIdRef = useRef(0);
@@ -2057,18 +2069,21 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
   function findMatchingExpense(row){
     const paid = row.paid_amount ? parseFloat(String(row.paid_amount).replace(',','.')) : 0;
     if(paid<=0) return null;
-    const paidDate = row.paid_date || new Date().toISOString().slice(0,10);
-    const paidTime = new Date(paidDate).getTime();
+    const creditCategoryNames = new Set((categories||[]).filter(c=>c.is_credit).map(c=>c.name));
+    if(creditCategoryNames.size===0) return null; // sem categoria de crédito cadastrada, não tem onde procurar
+
+    const today = new Date(); today.setHours(0,0,0,0);
+    const cutoff = new Date(today.getTime() - consolidationDays*86400000);
     const cardName = row.card_id ? row.description : null;
 
     const candidates = (expenses||[]).filter(e=>{
+      if(!creditCategoryNames.has(e.category)) return false;
+      const eDate = new Date(e.date+'T00:00:00');
+      if(eDate < cutoff || eDate > today) return false;
       const sameAmount = Math.abs(Number(e.amount)-paid) < 0.01;
       if(!sameAmount) return false;
-      const diffDays = Math.abs(new Date(e.date).getTime()-paidTime) / 86400000;
-      if(diffDays > 7) return false;
       if(cardName) return (e.card||'').trim().toLowerCase()===cardName.trim().toLowerCase();
-      // conta avulsa: sem cartão pra comparar, aceita por valor+data só
-      return true;
+      return true; // conta avulsa: sem cartão pra comparar, aceita por categoria+valor+data só
     });
     return candidates[0] || null;
   }
@@ -2085,29 +2100,40 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
 
   async function saveRow(row){
     setSavingId(row.id);
-    const match = findMatchingExpense(row);
     const {error} = await client.from('bills_to_pay').update({
       description: row.description,
       open_amount: row.open_amount===''?null:parseFloat(String(row.open_amount).replace(',','.')),
       minimum_payment: row.minimum_payment===''?null:parseFloat(String(row.minimum_payment).replace(',','.')),
       paid_amount: row.paid_amount===''?null:parseFloat(String(row.paid_amount).replace(',','.')),
       paid_date: row.paid_amount ? (row.paid_date || new Date().toISOString().slice(0,10)) : null,
-      expense_id: match ? match.id : null,
       is_paid: !!row.is_paid
     }).eq('id',row.id);
     setSavingId(null);
     if(error){ showToast('Erro: '+error.message); return; }
-    showToast(match ? 'Salvo — encontrado no lançamento ✓' : 'Salvo (ainda sem lançamento correspondente)');
     loadRows();
+    // Se já não tem lançamento confirmado, procura um candidato e pede confirmação
+    // antes de atribuir — nunca atribui sozinho.
+    if(!row.expense_id){
+      const match = findMatchingExpense(row);
+      if(match) setMatchConfirm({ rowId: row.id, rowDescription: row.description, candidate: match });
+    }
   }
 
   // Botão pra tentar de novo depois de sincronizar o Plaid, sem precisar reeditar o campo
-  async function recheckMatch(row){
-    setSavingId(row.id);
+  function recheckMatch(row){
     const match = findMatchingExpense(row);
-    await client.from('bills_to_pay').update({ expense_id: match ? match.id : null }).eq('id',row.id);
-    setSavingId(null);
-    showToast(match ? 'Encontrado no lançamento ✓' : 'Ainda não achou — sincroniza o Plaid e tenta de novo');
+    if(!match){ showToast('Ainda não achou — sincroniza o Plaid e tenta de novo'); return; }
+    setMatchConfirm({ rowId: row.id, rowDescription: row.description, candidate: match });
+  }
+
+  async function confirmMatch(){
+    if(!matchConfirm) return;
+    setConfirmingMatch(true);
+    const {error} = await client.from('bills_to_pay').update({ expense_id: matchConfirm.candidate.id }).eq('id',matchConfirm.rowId);
+    setConfirmingMatch(false);
+    if(error){ showToast('Erro: '+error.message); return; }
+    showToast('Confirmado — pagamento ligado ao lançamento ✓');
+    setMatchConfirm(null);
     loadRows();
   }
 
@@ -2216,6 +2242,28 @@ function PayablesTab({client,cards,users,expenses,reload,showToast}){
           <div className="row2">
             <button className="btn btn-ghost" onClick={()=>setPendingNewCards([])}>Ignorar</button>
             <button className="btn btn-primary" onClick={confirmAddNewCards}>Adicionar selecionados</button>
+          </div>
+        </div>
+      )}
+
+      {matchConfirm && (
+        <div className="card" style={{borderColor:'var(--green)'}}>
+          <div style={{fontWeight:700,marginBottom:6}}>✅ Encontramos um lançamento parecido</div>
+          <p className="muted" style={{marginBottom:10}}>Pra "{matchConfirm.rowDescription}":</p>
+          <div style={{background:'var(--panel-2)',borderRadius:8,padding:'10px 12px',marginBottom:12}}>
+            <div className="ledger-desc">{matchConfirm.candidate.description}</div>
+            <div className="ledger-meta">
+              {new Date(matchConfirm.candidate.date).toLocaleDateString('pt-BR')} · {matchConfirm.candidate.category}
+              {matchConfirm.candidate.card && <> · {matchConfirm.candidate.card}</>}
+            </div>
+            <div className="ledger-amt" style={{marginTop:4}}>{fmtBRL(Number(matchConfirm.candidate.amount))}</div>
+          </div>
+          <p className="muted" style={{marginBottom:10,fontSize:11}}>Confere se é o mesmo pagamento antes de confirmar.</p>
+          <div className="row2">
+            <button className="btn btn-ghost" onClick={()=>setMatchConfirm(null)} disabled={confirmingMatch}>Não é esse</button>
+            <button className="btn btn-primary" onClick={confirmMatch} disabled={confirmingMatch}>
+              {confirmingMatch ? <span className="spinner"></span> : 'Confirmar'}
+            </button>
           </div>
         </div>
       )}
@@ -2429,6 +2477,28 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
   const [editingCardId,setEditingCardId] = useState(null);
   const [editingCardName,setEditingCardName] = useState('');
   const [busy,setBusy] = useState(false);
+  const [consolidationDays,setConsolidationDays] = useState('');
+  const [savingSettings,setSavingSettings] = useState(false);
+
+  useEffect(()=>{
+    async function loadSettings(){
+      if(!client || !embedded) return;
+      const {data} = await client.from('app_settings').select('consolidation_days').eq('id',1).single();
+      if(data?.consolidation_days!=null) setConsolidationDays(String(data.consolidation_days));
+    }
+    loadSettings();
+  },[client, embedded]);
+
+  async function saveConsolidationDays(){
+    const n = parseInt(consolidationDays,10);
+    if(!n || n<1){ showToast('Informe um número de dias válido'); return; }
+    setSavingSettings(true);
+    const {error} = await client.from('app_settings').update({ consolidation_days: n }).eq('id',1);
+    setSavingSettings(false);
+    if(error){ showToast('Erro: '+error.message); return; }
+    showToast('Salvo ✓');
+  }
+
   const [plaidConns,setPlaidConns] = useState({}); // card_id -> {status, account_name, last_synced_at}
   const [plaidPending,setPlaidPending] = useState([]); // contas ainda não associadas a nenhum cartão
   const [connectingCardId,setConnectingCardId] = useState(null);
@@ -2914,6 +2984,18 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
         </div>
       )}
 
+      {embedded && client && (
+        <div className="card">
+          <div style={{fontWeight:700,marginBottom:10,fontSize:14}}>A Pagar — Consolidação</div>
+          <div className="field">
+            <label>Dias de consolidação</label>
+            <input value={consolidationDays} onChange={e=>setConsolidationDays(e.target.value)} placeholder="Ex: 7" inputMode="numeric" />
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={saveConsolidationDays} disabled={savingSettings}>{savingSettings?'Salvando…':'Salvar'}</button>
+          <p className="muted" style={{marginTop:10}}>Quando "A Pagar" procura um lançamento correspondente a um pagamento marcado, olha só nas categorias de crédito (ex: "Pagamento Efetuado"), de hoje pra trás até esse número de dias.</p>
+        </div>
+      )}
+
       <div className="card">
         <p className="muted" style={{marginBottom:12}}>
           Crie um projeto grátis em supabase.com, rode o SQL abaixo na aba SQL Editor, e cole a URL e a chave anon aqui.
@@ -3123,6 +3205,20 @@ create policy "anyone_delete_bills" on bills_to_pay for delete using (true);
 create policy "anyone_update_bills" on bills_to_pay for update using (true);
 
 create unique index if not exists bills_to_pay_month_card_uidx on bills_to_pay(month_key, card_id) where card_id is not null;
+
+-- Configurações gerais compartilhadas do app (linha única). Hoje só guarda os
+-- "dias de consolidação" — quantos dias pra trás a partir de hoje a busca de
+-- pagamento em A Pagar considera.
+create table if not exists app_settings (
+  id integer primary key default 1,
+  consolidation_days integer default 7,
+  constraint app_settings_single_row check (id = 1)
+);
+insert into app_settings (id, consolidation_days) values (1, 7) on conflict (id) do nothing;
+
+alter table app_settings enable row level security;
+create policy "anyone_select_settings" on app_settings for select using (true);
+create policy "anyone_update_settings" on app_settings for update using (true);
 `;
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
