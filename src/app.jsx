@@ -2141,10 +2141,10 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
   async function confirmMatch(){
     if(!matchConfirm) return;
     setConfirmingMatch(true);
-    const {error} = await client.from('bills_to_pay').update({ expense_id: matchConfirm.candidate.id }).eq('id',matchConfirm.rowId);
+    const {error} = await client.from('bills_to_pay').update({ expense_id: matchConfirm.candidate.id, is_paid: true }).eq('id',matchConfirm.rowId);
     setConfirmingMatch(false);
     if(error){ showToast('Erro: '+error.message); return; }
-    showToast('Confirmado — pagamento ligado ao lançamento ✓');
+    showToast('Confirmado — pagamento ligado ao lançamento e marcado como pago ✓');
     setMatchConfirm(null);
     loadRows();
   }
