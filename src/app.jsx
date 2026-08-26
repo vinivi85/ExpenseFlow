@@ -2129,11 +2129,19 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     }
   }
 
-  // Botão pra tentar de novo depois de sincronizar o Plaid, sem precisar reeditar o campo
+  // Botão pra tentar de novo depois de sincronizar o Plaid. Em vez de só rodar a
+  // busca direto, replica a mesma sequência de desmarcar/marcar o "Pago" que
+  // funciona — desmarca, salva, marca de novo, salva (isso já dispara a busca).
   async function recheckMatch(row){
     setSavingId(row.id);
-    const match = await findMatchingExpense(row);
+    const unchecked = { ...row, is_paid: false };
+    await client.from('bills_to_pay').update({ is_paid: false }).eq('id',row.id);
+    const rechecked = { ...unchecked, is_paid: true };
+    const {error} = await client.from('bills_to_pay').update({ is_paid: true }).eq('id',row.id);
     setSavingId(null);
+    if(error){ showToast('Erro: '+error.message); return; }
+    loadRows();
+    const match = await findMatchingExpense(rechecked);
     if(!match){ showToast('Ainda não achou — sincroniza o Plaid e tenta de novo'); return; }
     setMatchConfirm({ rowId: row.id, rowDescription: row.description, candidate: match });
   }
