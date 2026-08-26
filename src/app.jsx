@@ -2066,7 +2066,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
   // quando sincronizar (é uma transação real no extrato). Aqui só procura um
   // lançamento já existente que bate (mesmo valor, data próxima, mesmo cartão/fonte
   // se for o caso) e liga os dois, pra sinalizar que deu match.
-  function findMatchingExpense(row){
+  async function findMatchingExpense(row){
     const paid = row.paid_amount ? parseFloat(String(row.paid_amount).replace(',','.')) : 0;
     if(paid<=0) return null;
     const creditCategoryNames = new Set((categories||[]).filter(c=>c.is_credit).map(c=>c.name));
@@ -2075,13 +2075,20 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     const today = new Date(); today.setHours(0,0,0,0);
     const cutoff = new Date(today.getTime() - consolidationDays*86400000);
 
+    // Busca direto no banco (não usa a prop "expenses" que pode estar desatualizada
+    // na tela) — assim sempre pega lançamentos recém criados/editados/sincronizados.
+    const {data: freshExpenses, error} = await client
+      .from('expenses')
+      .select('id,description,amount,category,card,date')
+      .gte('date', cutoff.toISOString().slice(0,10))
+      .lte('date', today.toISOString().slice(0,10));
+    if(error) return null;
+
     // Não exige bater o cartão: o campo "Cartão/Fonte" de um pagamento normalmente é
     // a conta de onde saiu o dinheiro (o banco), não o cartão que está sendo pago —
     // então nunca ia bater com o nome do cartão cadastrado em A Pagar.
-    const candidates = (expenses||[]).filter(e=>{
+    const candidates = (freshExpenses||[]).filter(e=>{
       if(!creditCategoryNames.has(e.category)) return false;
-      const eDate = new Date(e.date+'T00:00:00');
-      if(eDate < cutoff || eDate > today) return false;
       return Math.abs(Number(e.amount)-paid) < 0.01;
     });
     return candidates[0] || null;
@@ -2113,14 +2120,16 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     // Se já não tem lançamento confirmado, procura um candidato e pede confirmação
     // antes de atribuir — nunca atribui sozinho.
     if(!row.expense_id){
-      const match = findMatchingExpense(row);
+      const match = await findMatchingExpense(row);
       if(match) setMatchConfirm({ rowId: row.id, rowDescription: row.description, candidate: match });
     }
   }
 
   // Botão pra tentar de novo depois de sincronizar o Plaid, sem precisar reeditar o campo
-  function recheckMatch(row){
-    const match = findMatchingExpense(row);
+  async function recheckMatch(row){
+    setSavingId(row.id);
+    const match = await findMatchingExpense(row);
+    setSavingId(null);
     if(!match){ showToast('Ainda não achou — sincroniza o Plaid e tenta de novo'); return; }
     setMatchConfirm({ rowId: row.id, rowDescription: row.description, candidate: match });
   }
@@ -2146,7 +2155,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
   async function addStandaloneBill(){
     if(!newBill.description.trim()){ showToast('Preencha a descrição'); return; }
     const paidDate = newBill.paid_amount ? new Date().toISOString().slice(0,10) : null;
-    const match = newBill.paid_amount ? findMatchingExpense({
+    const match = newBill.paid_amount ? await findMatchingExpense({
       paid_amount: newBill.paid_amount, paid_date: paidDate, card_id: null, description: newBill.description.trim()
     }) : null;
     const {error} = await client.from('bills_to_pay').insert({
