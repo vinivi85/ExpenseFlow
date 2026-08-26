@@ -2119,31 +2119,23 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
       is_paid: !!row.is_paid
     }).eq('id',row.id);
     setSavingId(null);
-    if(error){ showToast('Erro: '+error.message); return; }
+    if(error){ showToast('Erro: '+error.message); return false; }
     loadRows();
     // Se já não tem lançamento confirmado, procura um candidato e pede confirmação
     // antes de atribuir — nunca atribui sozinho.
     if(!row.expense_id){
       const match = await findMatchingExpense(row);
-      if(match) setMatchConfirm({ rowId: row.id, rowDescription: row.description, candidate: match });
+      if(match){ setMatchConfirm({ rowId: row.id, rowDescription: row.description, candidate: match }); return true; }
     }
+    return false;
   }
 
-  // Botão pra tentar de novo depois de sincronizar o Plaid. Em vez de só rodar a
-  // busca direto, replica a mesma sequência de desmarcar/marcar o "Pago" que
-  // funciona — desmarca, salva, marca de novo, salva (isso já dispara a busca).
+  // Botão pra tentar de novo depois de sincronizar o Plaid — usa exatamente o
+  // mesmo caminho que marcar o checkbox "Pago" usa (saveRow: salva a linha
+  // inteira, recarrega, e só então busca), em vez de rodar a busca sozinha.
   async function recheckMatch(row){
-    setSavingId(row.id);
-    const unchecked = { ...row, is_paid: false };
-    await client.from('bills_to_pay').update({ is_paid: false }).eq('id',row.id);
-    const rechecked = { ...unchecked, is_paid: true };
-    const {error} = await client.from('bills_to_pay').update({ is_paid: true }).eq('id',row.id);
-    setSavingId(null);
-    if(error){ showToast('Erro: '+error.message); return; }
-    loadRows();
-    const match = await findMatchingExpense(rechecked);
-    if(!match){ showToast('Ainda não achou — sincroniza o Plaid e tenta de novo'); return; }
-    setMatchConfirm({ rowId: row.id, rowDescription: row.description, candidate: match });
+    const found = await saveRow(row);
+    if(!found) showToast('Ainda não achou — sincroniza o Plaid e tenta de novo');
   }
 
   async function confirmMatch(){
