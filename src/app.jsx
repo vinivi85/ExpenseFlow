@@ -1245,6 +1245,19 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
     currentGroup.total += Number(e.amount);
   });
 
+  // Quando filtra por cartão/fonte, monta um resumo por categoria só do que está
+  // sendo mostrado (respeita também categoria e busca, se estiverem ativos).
+  const categoryBreakdown = cardFilter ? (()=>{
+    const byCat = {};
+    filteredExpenses.forEach(e=>{
+      const cat = e.category || 'Outros';
+      byCat[cat] = (byCat[cat]||0) + Number(e.amount);
+    });
+    return Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  })() : null;
+  const breakdownTotal = categoryBreakdown ? categoryBreakdown.reduce((s,[,v])=>s+v,0) : 0;
+  const breakdownMax = categoryBreakdown && categoryBreakdown.length ? categoryBreakdown[0][1] : 1;
+
   return (
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
@@ -1476,6 +1489,22 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
           <span style={{color:'var(--text)'}}>Total geral</span>
           <span style={{fontSize:15,color:'var(--green)'}}>{fmtBRL(filteredExpenses.reduce((s,e)=>s+Number(e.amount),0))}</span>
         </div>
+      )}
+      {categoryBreakdown && categoryBreakdown.length>0 && (
+        <>
+          <div className="section-title" style={{marginTop:20}}>Resumo por categoria — {cardFilter}</div>
+          <div className="card">
+            {categoryBreakdown.map(([cat,val])=>(
+              <div className="cat-bar-wrap" key={cat}>
+                <div className="cat-bar-top"><span>{cat}</span><b>{fmtBRL(val)}</b></div>
+                <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(val/breakdownMax*100)+'%'}}></div></div>
+              </div>
+            ))}
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,paddingTop:10,marginTop:4,borderTop:'1px dashed var(--bezel)'}}>
+              <span className="muted">Total</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(breakdownTotal)}</b>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
