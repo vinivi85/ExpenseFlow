@@ -222,6 +222,32 @@ function extractJson(text){
 function fmtBRL(n){
   return (n<0?'-':'') + 'R$ ' + Math.abs(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
 }
+// Agrupa despesas por descrição, juntando nomes parecidos quando um é prefixo do
+// outro palavra-por-palavra (ex: "Walmart" e "Walmart Supercenter" viram um grupo
+// só) — evita falso positivo tipo "gas" batendo com "vegas" (compara por palavra
+// inteira, não por substring solta).
+function groupByFuzzyDescription(items){
+  const wordsOf = s => s.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const isWordPrefixMatch = (a,b) => {
+    const wa = wordsOf(a), wb = wordsOf(b);
+    const [shorter,longer] = wa.length<=wb.length ? [wa,wb] : [wb,wa];
+    if(shorter.length===0) return false;
+    return shorter.every((w,i)=>longer[i]===w);
+  };
+  const groups = []; // {label, total, count}
+  items.forEach(item=>{
+    const desc = (item.description||'Sem descrição').trim();
+    let g = groups.find(g=>isWordPrefixMatch(g.label, desc));
+    if(g){
+      g.total += Number(item.amount);
+      g.count += 1;
+      if(desc.length < g.label.length) g.label = desc; // fica com o nome mais curto/genérico
+    } else {
+      groups.push({ label: desc, total: Number(item.amount), count: 1 });
+    }
+  });
+  return groups.sort((a,b)=>b.total-a.total);
+}
 // Formata um campo numérico pra sempre ter duas casas decimais (0.00) — usado no
 // blur dos campos de valor, pra não interferir na digitação em si.
 function fmt2(v){
@@ -519,15 +545,9 @@ function App(){
   const cardList = Object.entries(byCard).sort((a,b)=>b[1]-a[1]);
   const maxCard = cardList.length ? cardList[0][1] : 1;
 
-  // Agrupa por descrição (mesma loja/despesa) pra achar recorrências e acumulado
-  const byDesc = {};
-  viewExpenses.forEach(e=>{
-    const key = (e.description||'Sem descrição').trim().toLowerCase();
-    if(!byDesc[key]) byDesc[key] = { label: e.description||'Sem descrição', total:0, count:0 };
-    byDesc[key].total += Number(e.amount);
-    byDesc[key].count += 1;
-  });
-  const descList = Object.values(byDesc).sort((a,b)=>b.total-a.total);
+  // Agrupa por descrição (mesma loja/despesa), com correspondência aproximada —
+  // ex: "Walmart" e "Walmart Supercenter" viram uma linha só.
+  const descList = groupByFuzzyDescription(viewExpenses);
   const maxDesc = descList.length ? descList[0].total : 1;
 
   const listExpenses = viewExpensesAll;
@@ -1287,18 +1307,10 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
   const cardBreakdownTotal = cardBreakdown ? cardBreakdown.reduce((s,[,v])=>s+v,0) : 0;
   const cardBreakdownMax = cardBreakdown && cardBreakdown.length ? cardBreakdown[0][1] : 1;
 
-  // Ainda dentro da categoria filtrada, agrupa por descrição (mesmo nome/origem) —
-  // ex: várias despesas "Walmart" em Mercado viram uma linha só, somada.
-  const descBreakdown = (categoryFilter && !cardFilter) ? (()=>{
-    const byDesc = {};
-    filteredExpenses.forEach(e=>{
-      const key = (e.description||'Sem descrição').trim().toLowerCase();
-      if(!byDesc[key]) byDesc[key] = { label: e.description||'Sem descrição', total:0, count:0 };
-      byDesc[key].total += Number(e.amount);
-      byDesc[key].count += 1;
-    });
-    return Object.values(byDesc).sort((a,b)=>b.total-a.total);
-  })() : null;
+  // Ainda dentro da categoria filtrada, agrupa por descrição (mesmo nome/origem,
+  // com correspondência aproximada) — ex: "Walmart" e "Walmart Supercenter" em
+  // Mercado viram uma linha só, somada.
+  const descBreakdown = (categoryFilter && !cardFilter) ? groupByFuzzyDescription(filteredExpenses) : null;
   const descBreakdownTotal = descBreakdown ? descBreakdown.reduce((s,d)=>s+d.total,0) : 0;
   const descBreakdownMax = descBreakdown && descBreakdown.length ? descBreakdown[0].total : 1;
 
