@@ -1274,6 +1274,19 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
   const breakdownTotal = categoryBreakdown ? categoryBreakdown.reduce((s,[,v])=>s+v,0) : 0;
   const breakdownMax = categoryBreakdown && categoryBreakdown.length ? categoryBreakdown[0][1] : 1;
 
+  // Espelhado: quando filtra por categoria (e nenhum cartão específico, ou seja
+  // "todos" os cartões), monta um resumo por cartão/fonte de quem pagou aquela categoria.
+  const cardBreakdown = (categoryFilter && !cardFilter) ? (()=>{
+    const byCard = {};
+    filteredExpenses.forEach(e=>{
+      const card = e.card || 'Sem cartão/fonte';
+      byCard[card] = (byCard[card]||0) + Number(e.amount);
+    });
+    return Object.entries(byCard).sort((a,b)=>b[1]-a[1]);
+  })() : null;
+  const cardBreakdownTotal = cardBreakdown ? cardBreakdown.reduce((s,[,v])=>s+v,0) : 0;
+  const cardBreakdownMax = cardBreakdown && cardBreakdown.length ? cardBreakdown[0][1] : 1;
+
   return (
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
@@ -1518,6 +1531,22 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
             ))}
             <div style={{display:'flex',justifyContent:'space-between',fontSize:12,paddingTop:10,marginTop:4,borderTop:'1px dashed var(--bezel)'}}>
               <span className="muted">Total</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(breakdownTotal)}</b>
+            </div>
+          </div>
+        </>
+      )}
+      {cardBreakdown && cardBreakdown.length>0 && (
+        <>
+          <div className="section-title" style={{marginTop:20}}>Resumo por cartão/fonte — {categoryFilter}</div>
+          <div className="card">
+            {cardBreakdown.map(([card,val])=>(
+              <div className="cat-bar-wrap" key={card}>
+                <div className="cat-bar-top"><span>{card}</span><b>{fmtBRL(val)}</b></div>
+                <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(val/cardBreakdownMax*100)+'%'}}></div></div>
+              </div>
+            ))}
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,paddingTop:10,marginTop:4,borderTop:'1px dashed var(--bezel)'}}>
+              <span className="muted">Total</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(cardBreakdownTotal)}</b>
             </div>
           </div>
         </>
