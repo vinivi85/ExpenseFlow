@@ -1287,6 +1287,21 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
   const cardBreakdownTotal = cardBreakdown ? cardBreakdown.reduce((s,[,v])=>s+v,0) : 0;
   const cardBreakdownMax = cardBreakdown && cardBreakdown.length ? cardBreakdown[0][1] : 1;
 
+  // Ainda dentro da categoria filtrada, agrupa por descrição (mesmo nome/origem) —
+  // ex: várias despesas "Walmart" em Mercado viram uma linha só, somada.
+  const descBreakdown = (categoryFilter && !cardFilter) ? (()=>{
+    const byDesc = {};
+    filteredExpenses.forEach(e=>{
+      const key = (e.description||'Sem descrição').trim().toLowerCase();
+      if(!byDesc[key]) byDesc[key] = { label: e.description||'Sem descrição', total:0, count:0 };
+      byDesc[key].total += Number(e.amount);
+      byDesc[key].count += 1;
+    });
+    return Object.values(byDesc).sort((a,b)=>b.total-a.total);
+  })() : null;
+  const descBreakdownTotal = descBreakdown ? descBreakdown.reduce((s,d)=>s+d.total,0) : 0;
+  const descBreakdownMax = descBreakdown && descBreakdown.length ? descBreakdown[0].total : 1;
+
   return (
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
@@ -1547,6 +1562,22 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
             ))}
             <div style={{display:'flex',justifyContent:'space-between',fontSize:12,paddingTop:10,marginTop:4,borderTop:'1px dashed var(--bezel)'}}>
               <span className="muted">Total</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(cardBreakdownTotal)}</b>
+            </div>
+          </div>
+        </>
+      )}
+      {descBreakdown && descBreakdown.length>0 && (
+        <>
+          <div className="section-title" style={{marginTop:20}}>Agrupado por despesa — {categoryFilter}</div>
+          <div className="card">
+            {descBreakdown.map(d=>(
+              <div className="cat-bar-wrap" key={d.label}>
+                <div className="cat-bar-top"><span>{d.label} {d.count>1 && <span className="tag" style={{marginLeft:4}}>{d.count}x</span>}</span><b>{fmtBRL(d.total)}</b></div>
+                <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(d.total/descBreakdownMax*100)+'%'}}></div></div>
+              </div>
+            ))}
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,paddingTop:10,marginTop:4,borderTop:'1px dashed var(--bezel)'}}>
+              <span className="muted">Total</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(descBreakdownTotal)}</b>
             </div>
           </div>
         </>
