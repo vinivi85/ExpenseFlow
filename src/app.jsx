@@ -938,13 +938,29 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
       <div className="section-title">Por despesa (recorrentes)</div>
       <div className="card">
-        {descList.filter(d=>d.count>1).length===0 && <div className="empty"><span className="big">🔁</span>Nenhuma despesa repetida nesse período.</div>}
-        {descList.filter(d=>d.count>1).map(d=>(
-          <div className="cat-bar-wrap" key={d.label}>
-            <div className="cat-bar-top"><span>{d.label} <span className="tag" style={{marginLeft:4}}>{d.count}x</span></span><b>{fmtBRL(d.total)}</b></div>
-            <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(d.total/maxDesc*100)+'%'}}></div></div>
-          </div>
-        ))}
+        {(()=>{
+          const repeated = descList.filter(d=>d.count>1);
+          const singles = descList.filter(d=>d.count<=1);
+          const outrosTotal = singles.reduce((s,d)=>s+d.total,0);
+          const outrosCount = singles.reduce((s,d)=>s+d.count,0);
+          if(repeated.length===0 && outrosTotal===0) return <div className="empty"><span className="big">🔁</span>Nenhum gasto nesse período.</div>;
+          return (
+            <>
+              {repeated.map(d=>(
+                <div className="cat-bar-wrap" key={d.label}>
+                  <div className="cat-bar-top"><span>{d.label} <span className="tag" style={{marginLeft:4}}>{d.count}x</span></span><b>{fmtBRL(d.total)}</b></div>
+                  <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(d.total/maxDesc*100)+'%'}}></div></div>
+                </div>
+              ))}
+              {outrosTotal>0 && (
+                <div className="cat-bar-wrap" key="outros">
+                  <div className="cat-bar-top"><span>Outros <span className="tag" style={{marginLeft:4}}>{outrosCount}x</span></span><b>{fmtBRL(outrosTotal)}</b></div>
+                  <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(outrosTotal/maxDesc*100)+'%',background:'var(--muted)'}}></div></div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {creditCatList && creditCatList.length>0 && (
