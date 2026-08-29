@@ -1980,7 +1980,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
   const [addingBill,setAddingBill] = useState(false);
   const [closingMonth,setClosingMonth] = useState(false);
   const [consolidationDays,setConsolidationDays] = useState(7);
-  const [matchConfirm,setMatchConfirm] = useState(null); // {rowId, candidate}
+  const [matchConfirm,setMatchConfirm] = useState(null); // {rowId, rowDescription, candidates, index}
   const [confirmingMatch,setConfirmingMatch] = useState(false);
 
   useEffect(()=>{
@@ -2187,11 +2187,11 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
   // quando sincronizar (é uma transação real no extrato). Aqui só procura um
   // lançamento já existente que bate (mesmo valor, data próxima, mesmo cartão/fonte
   // se for o caso) e liga os dois, pra sinalizar que deu match.
-  async function findMatchingExpense(row){
+  async function findMatchingCandidates(row){
     const paid = row.paid_amount ? parseFloat(String(row.paid_amount).replace(',','.')) : 0;
-    if(paid<=0) return null;
+    if(paid<=0) return [];
     const creditCategoryNames = new Set((categories||[]).filter(c=>c.is_credit).map(c=>c.name));
-    if(creditCategoryNames.size===0) return null; // sem categoria de crédito cadastrada, não tem onde procurar
+    if(creditCategoryNames.size===0) return []; // sem categoria de crédito cadastrada, não tem onde procurar
 
     const today = new Date(); today.setHours(0,0,0,0);
     const cutoff = new Date(today.getTime() - consolidationDays*86400000);
@@ -2203,15 +2203,22 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
       .select('id,description,amount,category,card,date')
       .gte('date', cutoff.toISOString().slice(0,10))
       .lte('date', today.toISOString().slice(0,10));
-    if(error) return null;
+    if(error) return [];
 
     // Não exige bater o cartão: o campo "Cartão/Fonte" de um pagamento normalmente é
     // a conta de onde saiu o dinheiro (o banco), não o cartão que está sendo pago —
     // então nunca ia bater com o nome do cartão cadastrado em A Pagar.
-    const candidates = (freshExpenses||[]).filter(e=>{
+    // Retorna TODOS os candidatos (não só o primeiro) — se dois lançamentos
+    // diferentes tiverem o mesmo valor, dá pra ir passando pelos outros quando o
+    // primeiro mostrado não for o certo, em vez de simplesmente parar de procurar.
+    return (freshExpenses||[]).filter(e=>{
       if(!creditCategoryNames.has(e.category)) return false;
       return Math.abs(Number(e.amount)-paid) < 0.01;
     });
+  }
+
+  async function findMatchingExpense(row){
+    const candidates = await findMatchingCandidates(row);
     return candidates[0] || null;
   }
 
@@ -2238,11 +2245,11 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     setSavingId(null);
     if(error){ showToast('Erro: '+error.message); return false; }
     loadRows();
-    // Se já não tem lançamento confirmado, procura um candidato e pede confirmação
+    // Se já não tem lançamento confirmado, procura candidatos e pede confirmação
     // antes de atribuir — nunca atribui sozinho.
     if(!row.expense_id){
-      const match = await findMatchingExpense(row);
-      if(match){ setMatchConfirm({ rowId: row.id, rowDescription: row.description, candidate: match }); return true; }
+      const candidates = await findMatchingCandidates(row);
+      if(candidates.length>0){ setMatchConfirm({ rowId: row.id, rowDescription: row.description, candidates, index: 0 }); return true; }
     }
     return false;
   }
@@ -2257,13 +2264,28 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
 
   async function confirmMatch(){
     if(!matchConfirm) return;
+    const candidate = matchConfirm.candidates[matchConfirm.index];
     setConfirmingMatch(true);
-    const {error} = await client.from('bills_to_pay').update({ expense_id: matchConfirm.candidate.id, is_paid: true }).eq('id',matchConfirm.rowId);
+    const {error} = await client.from('bills_to_pay').update({ expense_id: candidate.id, is_paid: true }).eq('id',matchConfirm.rowId);
     setConfirmingMatch(false);
     if(error){ showToast('Erro: '+error.message); return; }
     showToast('Confirmado — pagamento ligado ao lançamento e marcado como pago ✓');
     setMatchConfirm(null);
     loadRows();
+  }
+
+  // "Não é esse": em vez de simplesmente desistir, passa pro próximo lançamento
+  // que também bate os critérios (mesma categoria de crédito + valor) — útil
+  // quando existem duas despesas diferentes com o mesmo valor.
+  function rejectMatch(){
+    if(!matchConfirm) return;
+    const nextIndex = matchConfirm.index + 1;
+    if(nextIndex < matchConfirm.candidates.length){
+      setMatchConfirm({ ...matchConfirm, index: nextIndex });
+    } else {
+      showToast('Nenhum outro lançamento parecido encontrado');
+      setMatchConfirm(null);
+    }
   }
 
 
@@ -2375,27 +2397,35 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
         </div>
       )}
 
-      {matchConfirm && (
-        <div className="card" style={{borderColor:'var(--green)'}}>
-          <div style={{fontWeight:700,marginBottom:6}}>✅ Encontramos um lançamento parecido</div>
-          <p className="muted" style={{marginBottom:10}}>Pra "{matchConfirm.rowDescription}":</p>
-          <div style={{background:'var(--panel-2)',borderRadius:8,padding:'10px 12px',marginBottom:12}}>
-            <div className="ledger-desc">{matchConfirm.candidate.description}</div>
-            <div className="ledger-meta">
-              {new Date(matchConfirm.candidate.date).toLocaleDateString('pt-BR')} · {matchConfirm.candidate.category}
-              {matchConfirm.candidate.card && <> · {matchConfirm.candidate.card}</>}
+      {matchConfirm && (()=>{
+        const candidate = matchConfirm.candidates[matchConfirm.index];
+        const hasMore = matchConfirm.candidates.length > 1;
+        return (
+          <div className="card" style={{borderColor:'var(--green)'}}>
+            <div style={{fontWeight:700,marginBottom:6}}>✅ Encontramos um lançamento parecido</div>
+            <p className="muted" style={{marginBottom:10}}>
+              Pra "{matchConfirm.rowDescription}"{hasMore && <> — {matchConfirm.index+1} de {matchConfirm.candidates.length} parecidos</>}:
+            </p>
+            <div style={{background:'var(--panel-2)',borderRadius:8,padding:'10px 12px',marginBottom:12}}>
+              <div className="ledger-desc">{candidate.description}</div>
+              <div className="ledger-meta">
+                {new Date(candidate.date).toLocaleDateString('pt-BR')} · {candidate.category}
+                {candidate.card && <> · {candidate.card}</>}
+              </div>
+              <div className="ledger-amt" style={{marginTop:4}}>{fmtBRL(Number(candidate.amount))}</div>
             </div>
-            <div className="ledger-amt" style={{marginTop:4}}>{fmtBRL(Number(matchConfirm.candidate.amount))}</div>
+            <p className="muted" style={{marginBottom:10,fontSize:11}}>Confere se é o mesmo pagamento antes de confirmar.</p>
+            <div className="row2">
+              <button className="btn btn-ghost" onClick={rejectMatch} disabled={confirmingMatch}>
+                {hasMore && matchConfirm.index<matchConfirm.candidates.length-1 ? 'Não é esse — ver próximo' : 'Não é esse'}
+              </button>
+              <button className="btn btn-primary" onClick={confirmMatch} disabled={confirmingMatch}>
+                {confirmingMatch ? <span className="spinner"></span> : 'Confirmar'}
+              </button>
+            </div>
           </div>
-          <p className="muted" style={{marginBottom:10,fontSize:11}}>Confere se é o mesmo pagamento antes de confirmar.</p>
-          <div className="row2">
-            <button className="btn btn-ghost" onClick={()=>setMatchConfirm(null)} disabled={confirmingMatch}>Não é esse</button>
-            <button className="btn btn-primary" onClick={confirmMatch} disabled={confirmingMatch}>
-              {confirmingMatch ? <span className="spinner"></span> : 'Confirmar'}
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {loading && <div className="empty">Carregando…</div>}
 
