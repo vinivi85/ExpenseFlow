@@ -431,6 +431,7 @@ function App(){
   const [categories,setCategories] = useState([]);
   const [users,setUsers] = useState([]);
   const [cards,setCards] = useState([]);
+  const [accountTypes,setAccountTypes] = useState([]);
   const [loading,setLoading] = useState(false);
   const [toast,setToast] = useState(null);
   const client = useMemo(()=>getClient(cfg),[cfg.url,cfg.key]);
@@ -479,7 +480,23 @@ function App(){
     setCards(data||[]);
   }
 
-  useEffect(()=>{ if(client){ loadExpenses(); loadCategories(); loadUsers(); loadCards(); } },[client]);
+  async function loadAccountTypes(){
+    if(!client) return;
+    const {data,error} = await client.from('account_types').select('*').order('created_at',{ascending:true});
+    if(error) return; // tabela pode ainda não existir se o SQL novo não rodou — não trava o app
+    let list = data||[];
+    if(list.length===0){
+      // primeira vez / SQL rodou mas sem seed: garante crédito e conta padrão
+      const seeded = await client.from('account_types').insert([
+        {key:'credit',label:'Crédito',icon:'💳',style:'credit'},
+        {key:'bank',label:'Conta',icon:'🏦',style:'bank'}
+      ]).select();
+      list = seeded.data || [];
+    }
+    setAccountTypes(list);
+  }
+
+  useEffect(()=>{ if(client){ loadExpenses(); loadCategories(); loadUsers(); loadCards(); loadAccountTypes(); } },[client]);
 
   function switchUser(u){ setUser(u); localStorage.setItem('gastos_user',u); }
 
@@ -599,12 +616,12 @@ function App(){
       </div>
 
       <div className="content">
-        {tab==='dash' && <Dashboard catList={catList} maxCat={maxCat} cardList={cardList} maxCard={maxCard} descList={descList} maxDesc={maxDesc} periodTotal={periodTotal} creditCatList={creditCatList} creditTotal={creditTotal} cards={cards} client={client} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} />}
+        {tab==='dash' && <Dashboard catList={catList} maxCat={maxCat} cardList={cardList} maxCard={maxCard} descList={descList} maxDesc={maxDesc} periodTotal={periodTotal} creditCatList={creditCatList} creditTotal={creditTotal} cards={cards} accountTypes={accountTypes} client={client} reloadCards={loadCards} reload={loadExpenses} showToast={showToast} />}
         {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} periodLabel={periodLabels[period]} dateMatchesPeriod={dateMatchesPeriod} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='proj' && <ProjectionTab expenses={expenses} client={client} reload={loadExpenses} showToast={showToast} />}
         {tab==='addimport' && <AddOrImportTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} expenses={expenses} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
         {tab==='payables' && <PayablesTab client={client} cards={cards} categories={categories} users={userNames} expenses={expenses} reload={loadExpenses} showToast={showToast} />}
-        {tab==='cfg' && <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} embedded categories={categories} users={users} cards={cards} client={client} reloadCategories={loadCategories} reloadUsers={loadUsers} reloadCards={loadCards} reloadExpenses={loadExpenses} showToast={showToast} />}
+        {tab==='cfg' && <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} embedded categories={categories} users={users} cards={cards} accountTypes={accountTypes} client={client} reloadCategories={loadCategories} reloadUsers={loadUsers} reloadCards={loadCards} reloadAccountTypes={loadAccountTypes} reloadExpenses={loadExpenses} showToast={showToast} />}
       </div>
 
       <div className="tabs">
@@ -621,7 +638,7 @@ function App(){
   );
 }
 
-function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal,creditCatList,creditTotal,cards,client,reloadCards,reload,showToast}){
+function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal,creditCatList,creditTotal,cards,accountTypes,client,reloadCards,reload,showToast}){
   const [syncing,setSyncing] = useState(false);
   const [syncResultMsg,setSyncResultMsg] = useState(()=>loadSyncMsg('gastos_sync_msg_all'));
   const [balances,setBalances] = useState([]);
@@ -725,6 +742,15 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
   const balanceMap = {};
   balances.forEach(b=>{ balanceMap[b.card_id] = b; });
 
+  // Descobre se um tipo de conta se comporta como "crédito" (limite/saldo em
+  // aberto/disponível) ou "conta" (só um saldo). Cai pro padrão antigo se a
+  // tabela de tipos ainda não carregou (ex: SQL novo não rodou ainda).
+  function styleOf(key){
+    const t = (accountTypes||[]).find(t=>t.key===(key||'credit'));
+    if(t) return t.style;
+    return (key||'credit')==='bank' ? 'bank' : 'credit';
+  }
+
   function isStale(timestamp){
     if(!timestamp) return false;
     const diffMs = Date.now() - new Date(timestamp).getTime();
@@ -734,7 +760,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
   function renderCardRow(c){
     const b = balanceMap[c.id];
     const connected = !!b && b.status==='connected';
-    const isCredit = (c.account_type||'credit')==='credit';
+    const isCredit = styleOf(c.account_type)==='credit';
 
     // Trata saldo e limite como coisas separadas — a Capital One, por exemplo, manda
     // o saldo (current_balance) certinho via Plaid mas às vezes não manda o limite.
@@ -764,8 +790,9 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
           <span style={{width:7,height:7,borderRadius:'50%',background:dotColor,display:'inline-block',flexShrink:0}}></span>
           <span className="ledger-desc" style={{flex:1}}>{c.name}</span>
           <select value={c.account_type||'credit'} onChange={ev=>setAccountType(c.id,ev.target.value)} style={{width:'auto',padding:'3px 6px',fontSize:10.5}}>
-            <option value="credit">Crédito</option>
-            <option value="bank">Conta</option>
+            {(accountTypes&&accountTypes.length ? accountTypes : [{key:'credit',label:'Crédito'},{key:'bank',label:'Conta'}]).map(t=>(
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
           </select>
         </div>
         {connected && (
@@ -855,7 +882,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
   function cardFigures(c){
     const b = balanceMap[c.id];
     const connected = !!b && b.status==='connected';
-    const isCredit = (c.account_type||'credit')==='credit';
+    const isCredit = styleOf(c.account_type)==='credit';
     const liveBalance = connected ? b.current_balance : null;
     const liveAvailable = connected ? b.available_balance : null;
     const liveLimit = connected ? b.credit_limit : null;
@@ -871,21 +898,29 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
     return { balance, hasData:true };
   }
 
-  const creditCards = (cards||[]).filter(c=>(c.account_type||'credit')==='credit');
-  const bankCards = (cards||[]).filter(c=>c.account_type==='bank');
-
-  const creditTotals = creditCards.reduce((acc,c)=>{
-    const f = cardFigures(c);
-    if(f.hasData){ acc.limit+=f.limit; acc.owed+=f.owed; acc.available+=f.available; }
-    if(c.minimum_payment!=null) acc.minimum += Number(c.minimum_payment);
-    return acc;
-  }, {limit:0,owed:0,available:0,minimum:0});
-
-  const bankTotal = bankCards.reduce((acc,c)=>{
-    const f = cardFigures(c);
-    if(f.hasData) acc += f.balance;
-    return acc;
-  }, 0);
+  // Agrupa os cartões por tipo de conta (crédito, conta, e qualquer tipo novo
+  // criado em Config) — só mostra seção pros tipos que tiverem pelo menos 1 cartão.
+  const typeGroups = (accountTypes&&accountTypes.length ? accountTypes : [{key:'credit',label:'Crédito',icon:'💳',style:'credit'},{key:'bank',label:'Conta',icon:'🏦',style:'bank'}])
+    .map(t=>{
+      const typeCards = (cards||[]).filter(c=>(c.account_type||'credit')===t.key);
+      if(typeCards.length===0) return null;
+      if(t.style==='bank'){
+        const total = typeCards.reduce((acc,c)=>{
+          const f = cardFigures(c);
+          if(f.hasData) acc += f.balance;
+          return acc;
+        }, 0);
+        return { ...t, cardsList: typeCards, totals: { balance: total } };
+      }
+      const totals = typeCards.reduce((acc,c)=>{
+        const f = cardFigures(c);
+        if(f.hasData){ acc.limit+=f.limit; acc.owed+=f.owed; acc.available+=f.available; }
+        if(c.minimum_payment!=null) acc.minimum += Number(c.minimum_payment);
+        return acc;
+      }, {limit:0,owed:0,available:0,minimum:0});
+      return { ...t, cardsList: typeCards, totals };
+    })
+    .filter(Boolean);
 
   return (
     <div>
@@ -921,40 +956,36 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
         ))}
       </div>
 
-      {creditCards.length>0 && (
-        <>
-          <div className="section-title">💳 Cartões de Crédito</div>
+      {typeGroups.map(g=>(
+        <React.Fragment key={g.key}>
+          <div className="section-title">{g.icon||'💰'} {g.label}{g.style==='bank'?'s':''}</div>
           <div className="card">
-            {creditCards.map(renderCardRow)}
+            {g.cardsList.map(renderCardRow)}
             <div style={{padding:'12px 2px 2px',marginTop:4}}>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
-                <span className="muted">Limite total</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(creditTotals.limit)}</b>
-              </div>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
-                <span className="muted">Saldo em aberto total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--amber)'}}>{fmtBRL(creditTotals.owed)}</b>
-              </div>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
-                <span className="muted">Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(creditTotals.minimum)}</b>
-              </div>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
-                <span className="muted">Disponível total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(creditTotals.available)}</b>
-              </div>
+              {g.style==='bank' ? (
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+                  <span className="muted">Saldo total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(g.totals.balance)}</b>
+                </div>
+              ) : (
+                <>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+                    <span className="muted">Limite total</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(g.totals.limit)}</b>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+                    <span className="muted">Saldo em aberto total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--amber)'}}>{fmtBRL(g.totals.owed)}</b>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+                    <span className="muted">Total mínimo</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(g.totals.minimum)}</b>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+                    <span className="muted">Disponível total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(g.totals.available)}</b>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        </>
-      )}
-
-      {bankCards.length>0 && (
-        <>
-          <div className="section-title">🏦 Contas Bancárias</div>
-          <div className="card">
-            {bankCards.map(renderCardRow)}
-            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,padding:'12px 2px 2px',marginTop:4}}>
-              <span className="muted">Saldo total</span><b style={{fontFamily:'JetBrains Mono, monospace',color:'var(--green)'}}>{fmtBRL(bankTotal)}</b>
-            </div>
-          </div>
-        </>
-      )}
+        </React.Fragment>
+      ))}
 
       <div className="section-title">Por despesa (recorrentes)</div>
       <div className="card">
@@ -2627,7 +2658,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
   );
 }
 
-function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadCategories,reloadUsers,reloadCards,reloadExpenses,showToast}){
+function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,client,reloadCategories,reloadUsers,reloadCards,reloadAccountTypes,reloadExpenses,showToast}){
   const [url,setUrl] = useState(cfg.url||'');
   const [key,setKey] = useState(cfg.key||'');
   const [msg,setMsg] = useState('');
@@ -2640,6 +2671,11 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
   const [editingUserName,setEditingUserName] = useState('');
   const [newCard,setNewCard] = useState('');
   const [newCardType,setNewCardType] = useState('credit');
+  const [newTypeLabel,setNewTypeLabel] = useState('');
+  const [newTypeIcon,setNewTypeIcon] = useState('💰');
+  const [newTypeStyle,setNewTypeStyle] = useState('credit');
+  const [savingType,setSavingType] = useState(false);
+  const [deletingTypeId,setDeletingTypeId] = useState(null);
   const [editingCardId,setEditingCardId] = useState(null);
   const [editingCardName,setEditingCardName] = useState('');
   const [busy,setBusy] = useState(false);
@@ -2934,6 +2970,44 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
     reloadUsers();
   }
 
+  function slugifyKey(label){
+    return label.trim().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // tira acento
+      .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') || 'tipo';
+  }
+
+  async function addAccountType(){
+    const label = newTypeLabel.trim();
+    if(!label){ showToast('Preencha o nome do tipo'); return; }
+    let key = slugifyKey(label);
+    if((accountTypes||[]).some(t=>t.key===key)) key = key+'_'+Date.now().toString(36).slice(-4);
+    if((accountTypes||[]).some(t=>t.label.toLowerCase()===label.toLowerCase())){
+      showToast('Esse tipo já existe'); return;
+    }
+    setSavingType(true);
+    const {error} = await client.from('account_types').insert({ key, label, icon: newTypeIcon||'💰', style: newTypeStyle });
+    setSavingType(false);
+    if(error){ showToast('Erro: '+error.message); return; }
+    setNewTypeLabel(''); setNewTypeIcon('💰'); setNewTypeStyle('credit');
+    if(reloadAccountTypes) reloadAccountTypes();
+  }
+
+  async function deleteAccountType(t){
+    if(t.key==='credit' || t.key==='bank'){ showToast('Não dá pra excluir os tipos padrão (Crédito/Conta)'); return; }
+    setDeletingTypeId(t.id);
+    const {count} = await client.from('cards').select('id',{count:'exact',head:true}).eq('account_type',t.key);
+    if(count && count>0){
+      setDeletingTypeId(null);
+      showToast('Tem '+count+' cartão(ões) usando esse tipo — muda o tipo deles antes de excluir');
+      return;
+    }
+    const {error} = await client.from('account_types').delete().eq('id',t.id);
+    setDeletingTypeId(null);
+    if(error){ showToast('Erro: '+error.message); return; }
+    showToast('Tipo excluído ✓');
+    if(reloadAccountTypes) reloadAccountTypes();
+  }
+
   async function addCard(){
     const name = newCard.trim();
     if(!name) return;
@@ -3005,6 +3079,50 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
 
       {embedded && client && (
         <div className="card">
+          <div style={{fontWeight:700,marginBottom:10,fontSize:14}}>Tipos de Conta</div>
+          {(!accountTypes || accountTypes.length===0) && <p className="muted">Carregando…</p>}
+          {(accountTypes||[]).map(t=>(
+            <div key={t.id||t.key} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 2px',borderBottom:'1px dashed var(--bezel)'}}>
+              <div>
+                <span style={{marginRight:6}}>{t.icon||'💰'}</span>
+                <span>{t.label}</span>
+                <span className="tag" style={{marginLeft:6}}>{t.style==='bank'?'estilo conta':'estilo crédito'}</span>
+              </div>
+              {(t.key==='credit'||t.key==='bank') ? (
+                <span className="muted" style={{fontSize:11}}>padrão</span>
+              ) : (
+                <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteAccountType(t)}>
+                  {deletingTypeId===t.id ? <span className="spinner"></span> : 'excluir'}
+                </span>
+              )}
+            </div>
+          ))}
+          <div style={{marginTop:12}}>
+            <div className="row2" style={{marginBottom:8}}>
+              <div className="field" style={{marginBottom:0,flex:1}}>
+                <label>Nome do novo tipo</label>
+                <input value={newTypeLabel} onChange={e=>setNewTypeLabel(e.target.value)} placeholder="Ex: Empréstimo" onKeyDown={e=>{ if(e.key==='Enter') addAccountType(); }} />
+              </div>
+              <div className="field" style={{marginBottom:0,width:60}}>
+                <label>Ícone</label>
+                <input value={newTypeIcon} onChange={e=>setNewTypeIcon(e.target.value)} maxLength={2} />
+              </div>
+            </div>
+            <div className="field" style={{marginBottom:8}}>
+              <label>Se comporta como</label>
+              <select value={newTypeStyle} onChange={e=>setNewTypeStyle(e.target.value)}>
+                <option value="credit">Crédito (limite, saldo em aberto, disponível)</option>
+                <option value="bank">Conta (só um saldo)</option>
+              </select>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={addAccountType} disabled={savingType}>{savingType?'Salvando…':'Adicionar tipo'}</button>
+          </div>
+          <p className="muted" style={{marginTop:10}}>Só dá pra excluir um tipo se nenhum cartão estiver usando ele — muda o tipo dos cartões antes (ou exclui os cartões) pra poder excluir o tipo.</p>
+        </div>
+      )}
+
+      {embedded && client && (
+        <div className="card">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
             <div style={{fontWeight:700,fontSize:14}}>Cartões / Fontes</div>
             {Object.values(plaidConns).filter(c=>c.status==='connected').length>0 && (
@@ -3062,8 +3180,9 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,client,reloadC
               <input value={newCard} onChange={e=>setNewCard(e.target.value)} placeholder="Ex: Capital One Quicksilver" onKeyDown={e=>{ if(e.key==='Enter') addCard(); }} />
             </div>
             <select value={newCardType} onChange={e=>setNewCardType(e.target.value)} style={{flex:'0 0 auto',width:'auto'}}>
-              <option value="credit">Crédito</option>
-              <option value="bank">Conta</option>
+              {(accountTypes&&accountTypes.length ? accountTypes : [{key:'credit',label:'Crédito'},{key:'bank',label:'Conta'}]).map(t=>(
+                <option key={t.key} value={t.key}>{t.label}</option>
+              ))}
             </select>
             <button className="btn btn-primary btn-sm" style={{flex:'0 0 auto'}} onClick={addCard} disabled={busy}>Adicionar</button>
           </div>
@@ -3386,6 +3505,27 @@ insert into app_settings (id, consolidation_days) values (1, 7) on conflict (id)
 alter table app_settings enable row level security;
 create policy "anyone_select_settings" on app_settings for select using (true);
 create policy "anyone_update_settings" on app_settings for update using (true);
+
+-- Tipos de conta configuráveis (Crédito e Conta vêm de fábrica). "style" decide
+-- como o Resumo trata o cartão: 'credit' mostra limite/saldo em aberto/disponível,
+-- 'bank' mostra só um saldo. Novo tipo (ex: Empréstimo) escolhe qual estilo usar.
+create table if not exists account_types (
+  id uuid primary key default uuid_generate_v4(),
+  key text not null unique,
+  label text not null,
+  icon text default '💰',
+  style text default 'credit',
+  created_at timestamp default now()
+);
+insert into account_types (key,label,icon,style) values
+  ('credit','Crédito','💳','credit'),
+  ('bank','Conta','🏦','bank')
+on conflict (key) do nothing;
+
+alter table account_types enable row level security;
+create policy "anyone_select_account_types" on account_types for select using (true);
+create policy "anyone_insert_account_types" on account_types for insert with check (true);
+create policy "anyone_delete_account_types" on account_types for delete using (true);
 `;
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
