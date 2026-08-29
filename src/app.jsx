@@ -2198,12 +2198,17 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
 
     // Busca direto no banco (não usa a prop "expenses" que pode estar desatualizada
     // na tela) — assim sempre pega lançamentos recém criados/editados/sincronizados.
-    const {data: freshExpenses, error} = await client
-      .from('expenses')
-      .select('id,description,amount,category,card,date')
-      .gte('date', cutoff.toISOString().slice(0,10))
-      .lte('date', today.toISOString().slice(0,10));
+    const [{data: freshExpenses, error}, {data: usedRows}] = await Promise.all([
+      client.from('expenses').select('id,description,amount,category,card,date')
+        .gte('date', cutoff.toISOString().slice(0,10)).lte('date', today.toISOString().slice(0,10)),
+      client.from('bills_to_pay').select('expense_id').not('expense_id','is',null)
+    ]);
     if(error) return [];
+
+    // Um lançamento já ligado a alguma despesa em A Pagar (mesmo de outro mês) não
+    // pode ser sugerido de novo pra outra — uma vez consolidado, é pulado sempre,
+    // mesmo que bata valor/categoria/data de um pagamento diferente.
+    const usedExpenseIds = new Set((usedRows||[]).map(r=>r.expense_id).filter(Boolean));
 
     // Não exige bater o cartão: o campo "Cartão/Fonte" de um pagamento normalmente é
     // a conta de onde saiu o dinheiro (o banco), não o cartão que está sendo pago —
@@ -2212,6 +2217,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     // diferentes tiverem o mesmo valor, dá pra ir passando pelos outros quando o
     // primeiro mostrado não for o certo, em vez de simplesmente parar de procurar.
     return (freshExpenses||[]).filter(e=>{
+      if(usedExpenseIds.has(e.id) && e.id!==row.expense_id) return false;
       if(!creditCategoryNames.has(e.category)) return false;
       return Math.abs(Number(e.amount)-paid) < 0.01;
     });
