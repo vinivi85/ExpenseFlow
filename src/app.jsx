@@ -2010,6 +2010,8 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
   const [savingId,setSavingId] = useState(null);
   const [addingBill,setAddingBill] = useState(false);
   const [closingMonth,setClosingMonth] = useState(false);
+  const [isMonthClosed,setIsMonthClosed] = useState(false);
+  const [reopening,setReopening] = useState(false);
   const [consolidationDays,setConsolidationDays] = useState(7);
   const [matchConfirm,setMatchConfirm] = useState(null); // {rowId, rowDescription, candidates, index}
   const [confirmingMatch,setConfirmingMatch] = useState(false);
@@ -2144,6 +2146,8 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
       const bals = await loadBalances();
       if(requestIdRef.current !== myId) return; // uma carga mais nova já começou, descarta essa
       await loadRows(bals, myId, true);
+      const {data} = await client.from('closed_months').select('month_key').eq('month_key',monthKey).maybeSingle();
+      if(requestIdRef.current === myId) setIsMonthClosed(!!data);
     }
     init();
   },[monthKey, client, cards]);
@@ -2174,29 +2178,47 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
       const open = Number(row.open_amount||0);
       const deduction = rowIsPaid ? Number(row.paid_amount||0) : Number(row.minimum_payment||0);
       const leftover = open - deduction;
+      const card = row.card_id ? (cards||[]).find(c=>c.id===row.card_id) : null;
+      // Mínimo e vencimento sempre vêm do Resumo (cartão) na hora de fechar — não do
+      // valor antigo salvo na linha, que pode estar desatualizado.
+      const freshMinimum = card ? (card.minimum_payment ?? null) : (row.minimum_payment ?? null);
 
       const existing = row.card_id
         ? (nextRows||[]).find(r=>r.card_id===row.card_id)
         : (nextRows||[]).find(r=>!r.card_id && r.description===row.description);
 
       if(existing){
-        await client.from('bills_to_pay').update({ open_amount: fmt2(leftover) }).eq('id', existing.id);
+        await client.from('bills_to_pay').update({ open_amount: fmt2(leftover), minimum_payment: freshMinimum }).eq('id', existing.id);
       } else {
-        const card = row.card_id ? (cards||[]).find(c=>c.id===row.card_id) : null;
         await client.from('bills_to_pay').insert({
           month_key: nextKey,
           card_id: row.card_id || null,
           description: row.description,
           open_amount: fmt2(leftover),
-          minimum_payment: card?.minimum_payment ?? row.minimum_payment ?? null
+          minimum_payment: freshMinimum,
+          due_day: row.card_id ? null : row.due_day,
+          due_month: row.card_id ? null : row.due_month
         });
       }
     }
+
+    // Marca ESSE mês (o que está sendo fechado) como fechado — trava edição
+    // e desativa "Atualizar lista" até "Reabrir mês".
+    await client.from('closed_months').upsert({ month_key: monthKey });
 
     setClosingMonth(false);
     setConfirmingClose(false);
     showToast('Mês fechado — saldo aplicado em '+nextKey+' ✓');
     setMonthKey(nextKey);
+  }
+
+  async function reopenMonth(){
+    setReopening(true);
+    const {error} = await client.from('closed_months').delete().eq('month_key',monthKey);
+    setReopening(false);
+    if(error){ showToast('Erro: '+error.message); return; }
+    setIsMonthClosed(false);
+    showToast(monthLabel+' reaberto ✓');
   }
 
   function updateLocal(id, field, value){
@@ -2407,12 +2429,15 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     <div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
         <button className="btn btn-ghost btn-sm" onClick={()=>changeMonth(-1)}>◀</button>
-        <div style={{fontWeight:800,fontSize:15}}>{monthLabel}</div>
+        <div style={{fontWeight:800,fontSize:15,display:'flex',alignItems:'center',gap:6}}>
+          {monthLabel}
+          {isMonthClosed && <span className="tag" style={{color:'var(--amber)'}}>🔒 Fechado</span>}
+        </div>
         <button className="btn btn-ghost btn-sm" onClick={()=>changeMonth(1)}>▶</button>
       </div>
 
-      <button className="btn btn-ghost" style={{marginBottom:16}} onClick={checkForNewCards} disabled={checkingNew}>
-        {checkingNew ? <span className="spinner"></span> : '🔄 Atualizar lista'}
+      <button className="btn btn-ghost" style={{marginBottom:16}} onClick={checkForNewCards} disabled={checkingNew||isMonthClosed}>
+        {isMonthClosed ? '🔒 Mês fechado' : (checkingNew ? <span className="spinner"></span> : '🔄 Atualizar lista')}
       </button>
 
       {pendingNewCards.length>0 && (
@@ -2492,9 +2517,11 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
             {row.card_id ? (
               <div className="ledger-desc">{row.description}</div>
             ) : (
-              <input value={row.description} onChange={e=>updateLocal(row.id,'description',e.target.value)} onBlur={()=>saveRow(row)} style={{flex:1,marginRight:8}} />
+              <input value={row.description} onChange={e=>updateLocal(row.id,'description',e.target.value)} onBlur={()=>saveRow(row)} style={{flex:1,marginRight:8}} disabled={isMonthClosed} />
             )}
-            <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteBill(row)}>{row.card_id ? 'remover' : 'excluir'}</span>
+            {!isMonthClosed && (
+              <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteBill(row)}>{row.card_id ? 'remover' : 'excluir'}</span>
+            )}
           </div>
           <div style={{marginBottom:8}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
@@ -2509,7 +2536,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
                 )}
               </div>
               <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,flexShrink:0}}>
-                <input type="checkbox" checked={isPaid} onChange={e=>togglePaid(row,e.target.checked)} />
+                <input type="checkbox" checked={isPaid} onChange={e=>togglePaid(row,e.target.checked)} disabled={isMonthClosed} />
                 Pago
               </label>
             </div>
@@ -2522,7 +2549,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
           <div className="row2" style={{marginBottom:8}}>
             <div className="field" style={{marginBottom:0}}>
               <label>Valor em aberto</label>
-              <input value={row.open_amount??''} onChange={e=>updateLocal(row.id,'open_amount',e.target.value)} onBlur={()=>blurAmount(row,'open_amount')} placeholder="0,00" inputMode="decimal" />
+              <input value={row.open_amount??''} onChange={e=>updateLocal(row.id,'open_amount',e.target.value)} onBlur={()=>blurAmount(row,'open_amount')} placeholder="0,00" inputMode="decimal" disabled={isMonthClosed} />
             </div>
             <div className="field" style={{marginBottom:0}}>
               <label>A pagar</label>
@@ -2532,6 +2559,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
                 onBlur={()=>blurAmount(row,'minimum_payment')}
                 placeholder="0,00"
                 inputMode="decimal"
+                disabled={isMonthClosed}
                 style={belowMinimum ? {borderColor:'var(--red)',color:'var(--red)'} : undefined}
               />
             </div>
@@ -2539,7 +2567,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
           <div className="row2">
             <div className="field" style={{marginBottom:0}}>
               <label>Valor pago</label>
-              <input value={row.paid_amount??''} onChange={e=>updateLocal(row.id,'paid_amount',e.target.value)} onBlur={()=>blurAmount(row,'paid_amount')} placeholder="0,00" inputMode="decimal" />
+              <input value={row.paid_amount??''} onChange={e=>updateLocal(row.id,'paid_amount',e.target.value)} onBlur={()=>blurAmount(row,'paid_amount')} placeholder="0,00" inputMode="decimal" disabled={isMonthClosed} />
             </div>
             <div className="field" style={{marginBottom:0}}>
               <label>Saldo</label>
@@ -2555,7 +2583,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
             ) : (
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8}}>
                 <span style={{fontSize:11.5,color:'var(--amber)'}}>⏳ Aguardando lançamento correspondente</span>
-                <span className="link" onClick={()=>recheckMatch(row)}>tentar de novo</span>
+                {!isMonthClosed && <span className="link" onClick={()=>recheckMatch(row)}>tentar de novo</span>}
               </div>
             )
           )}
@@ -2597,7 +2625,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
         </div>
       )}
 
-      {!addingBill && (
+      {!addingBill && !isMonthClosed && (
         <button className="btn btn-ghost" style={{marginTop:6}} onClick={()=>setAddingBill(true)}>+ Adicionar conta avulsa (mortgage, AT&T, etc.)</button>
       )}
       {addingBill && (
@@ -2637,14 +2665,19 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
         </div>
       )}
 
-      {!loading && rows.length>0 && !confirmingClose && (
+      {!loading && rows.length>0 && !confirmingClose && !isMonthClosed && (
         <button className="btn btn-gold" style={{marginTop:16}} onClick={()=>setConfirmingClose(true)}>🔒 Fechar mês</button>
+      )}
+      {!loading && isMonthClosed && (
+        <button className="btn btn-ghost" style={{marginTop:16}} onClick={reopenMonth} disabled={reopening}>
+          {reopening ? <span className="spinner"></span> : '🔓 Reabrir mês'}
+        </button>
       )}
       {confirmingClose && (
         <div className="card" style={{borderColor:'var(--amber)',marginTop:16}}>
           <div style={{fontWeight:700,marginBottom:6,color:'var(--amber)'}}>⚠️ Fechar {monthLabel}?</div>
           <p className="muted" style={{marginBottom:14}}>
-            Pra cada despesa, calcula o que sobrou (saldo real se já foi paga, ou aberto − a pagar se não foi) e aplica esse valor como o novo "Valor em aberto" da mesma despesa em {nextMonthKeyOf(monthKey)}. Se a linha do próximo mês já existir, o valor em aberto dela é sobrescrito.
+            Pra cada despesa, calcula o que sobrou (saldo real se já foi paga, ou aberto − a pagar se não foi) e aplica esse valor como o novo "Valor em aberto" da mesma despesa em {nextMonthKeyOf(monthKey)} — mínimo e vencimento vêm do Resumo. Se a linha do próximo mês já existir, é sobrescrita. {monthLabel} fica travado pra edição até você reabrir.
           </p>
           <div className="row2">
             <button className="btn btn-ghost" onClick={()=>setConfirmingClose(false)} disabled={closingMonth}>Cancelar</button>
@@ -3526,6 +3559,17 @@ alter table account_types enable row level security;
 create policy "anyone_select_account_types" on account_types for select using (true);
 create policy "anyone_insert_account_types" on account_types for insert with check (true);
 create policy "anyone_delete_account_types" on account_types for delete using (true);
+
+-- Marca quais meses foram fechados em A Pagar. Mês fechado trava edição das
+-- despesas e desativa "Atualizar lista" — só "Reabrir mês" libera de novo.
+create table if not exists closed_months (
+  month_key text primary key,
+  closed_at timestamp default now()
+);
+alter table closed_months enable row level security;
+create policy "anyone_select_closed_months" on closed_months for select using (true);
+create policy "anyone_insert_closed_months" on closed_months for insert with check (true);
+create policy "anyone_delete_closed_months" on closed_months for delete using (true);
 `;
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
