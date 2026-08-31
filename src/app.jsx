@@ -2059,7 +2059,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     return null;
   }
 
-  async function loadRows(balancesData, requestId, withSpinner){
+  async function loadRows(balancesData, requestId, withSpinner, closedFlag){
     if(withSpinner) setLoading(true);
     const balList = balancesData || balances;
     const {data,error} = await client.from('bills_to_pay').select('*').eq('month_key',monthKey).order('created_at',{ascending:true});
@@ -2067,11 +2067,14 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     if(requestId!=null && requestIdRef.current!==requestId){ setLoading(false); return; } // superada por uma carga mais nova, não mexe em nada
 
     let allRows = data||[];
+    const monthIsClosed = closedFlag!==undefined ? closedFlag : isMonthClosed;
 
     // Preenche automaticamente linhas que já estão na lista mas ficaram sem valor em
     // aberto (ex: card criado antes do saldo do Plaid terminar de carregar). Isso só
     // corrige dado de linha que já existe — não adiciona cartão novo nenhum sozinho.
-    const toBackfill = allRows.filter(r=>r.card_id && r.open_amount==null && suggestedOpenFor(r.card_id,balList)!=null);
+    // NUNCA roda num mês fechado — mês fechado não pode ser alterado por nada, nem
+    // automaticamente.
+    const toBackfill = monthIsClosed ? [] : allRows.filter(r=>r.card_id && r.open_amount==null && suggestedOpenFor(r.card_id,balList)!=null);
     if(toBackfill.length>0){
       await Promise.all(toBackfill.map(r=>
         client.from('bills_to_pay').update({ open_amount: suggestedOpenFor(r.card_id,balList) }).eq('id',r.id)
@@ -2099,6 +2102,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
   // "Atualizar lista": procura cartões de crédito cadastrados que ainda não estão
   // nessa lista do mês, e pergunta antes de adicionar (nunca adiciona sozinho).
   async function checkForNewCards(){
+    if(isMonthClosed){ showToast('Mês fechado — reabre pra atualizar'); return; }
     setCheckingNew(true);
     const bals = await loadBalances();
     const {data} = await client.from('bills_to_pay').select('*').eq('month_key',monthKey);
@@ -2143,11 +2147,13 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     async function init(){
       if(!client || !cards) return;
       const myId = ++requestIdRef.current;
+      const {data: closedData} = await client.from('closed_months').select('month_key').eq('month_key',monthKey).maybeSingle();
+      if(requestIdRef.current !== myId) return;
+      const closed = !!closedData;
+      setIsMonthClosed(closed);
       const bals = await loadBalances();
       if(requestIdRef.current !== myId) return; // uma carga mais nova já começou, descarta essa
-      await loadRows(bals, myId, true);
-      const {data} = await client.from('closed_months').select('month_key').eq('month_key',monthKey).maybeSingle();
-      if(requestIdRef.current === myId) setIsMonthClosed(!!data);
+      await loadRows(bals, myId, true, closed);
     }
     init();
   },[monthKey, client, cards]);
@@ -2292,6 +2298,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
   }
 
   async function saveRow(row){
+    if(isMonthClosed) return false;
     setSavingId(row.id);
     const {error} = await client.from('bills_to_pay').update({
       description: row.description,
@@ -2349,12 +2356,14 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
 
 
   async function deleteBill(row){
+    if(isMonthClosed) return;
     await client.from('bills_to_pay').delete().eq('id',row.id);
     showToast('Removida');
     loadRows();
   }
 
   async function addStandaloneBill(){
+    if(isMonthClosed) return;
     if(!newBill.description.trim()){ showToast('Preencha a descrição'); return; }
     const paidDate = newBill.paid_amount ? new Date().toISOString().slice(0,10) : null;
     const match = newBill.paid_amount ? await findMatchingExpense({
