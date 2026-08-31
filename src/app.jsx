@@ -2147,9 +2147,9 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     async function init(){
       if(!client || !cards) return;
       const myId = ++requestIdRef.current;
-      const {data: closedData} = await client.from('closed_months').select('month_key').eq('month_key',monthKey).maybeSingle();
+      const {data: closedData} = await client.from('closed_months').select('is_closed').eq('month_key',monthKey).maybeSingle();
       if(requestIdRef.current !== myId) return;
-      const closed = !!closedData;
+      const closed = !!closedData?.is_closed;
       setIsMonthClosed(closed);
       const bals = await loadBalances();
       if(requestIdRef.current !== myId) return; // uma carga mais nova já começou, descarta essa
@@ -2209,8 +2209,22 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     }
 
     // Marca ESSE mês (o que está sendo fechado) como fechado — trava edição
-    // e desativa "Atualizar lista" até "Reabrir mês".
-    await client.from('closed_months').upsert({ month_key: monthKey });
+    // e desativa "Atualizar lista" até "Reabrir mês". Guarda também uma cópia
+    // completa das despesas nesse momento, como registro histórico permanente.
+    const snapshot = rows.map(r=>{
+      const card = r.card_id ? (cards||[]).find(c=>c.id===r.card_id) : null;
+      const rowIsPaid = r.is_paid===true || r.expense_id!=null;
+      return {
+        description: r.description,
+        card_name: card ? card.name : null,
+        open_amount: r.open_amount!=null ? Number(r.open_amount) : null,
+        minimum_payment: r.minimum_payment!=null ? Number(r.minimum_payment) : null,
+        paid_amount: r.paid_amount!=null ? Number(r.paid_amount) : null,
+        is_paid: rowIsPaid,
+        expense_id: r.expense_id || null
+      };
+    });
+    await client.from('closed_months').upsert({ month_key: monthKey, snapshot, is_closed: true });
 
     setClosingMonth(false);
     setConfirmingClose(false);
@@ -2220,7 +2234,9 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
 
   async function reopenMonth(){
     setReopening(true);
-    const {error} = await client.from('closed_months').delete().eq('month_key',monthKey);
+    // Não apaga a linha — só desmarca como fechado. O snapshot do fechamento fica
+    // guardado como histórico permanente, mesmo depois de reabrir e editar de novo.
+    const {error} = await client.from('closed_months').update({ is_closed: false }).eq('month_key',monthKey);
     setReopening(false);
     if(error){ showToast('Erro: '+error.message); return; }
     setIsMonthClosed(false);
@@ -3571,10 +3587,16 @@ create policy "anyone_delete_account_types" on account_types for delete using (t
 
 -- Marca quais meses foram fechados em A Pagar. Mês fechado trava edição das
 -- despesas e desativa "Atualizar lista" — só "Reabrir mês" libera de novo.
+-- "snapshot" guarda uma cópia completa das despesas no momento do fechamento —
+-- fica como registro histórico mesmo que algo mude depois de reabrir.
 create table if not exists closed_months (
   month_key text primary key,
-  closed_at timestamp default now()
+  closed_at timestamp default now(),
+  snapshot jsonb,
+  is_closed boolean default true
 );
+alter table closed_months add column if not exists snapshot jsonb;
+alter table closed_months add column if not exists is_closed boolean default true;
 alter table closed_months enable row level security;
 create policy "anyone_select_closed_months" on closed_months for select using (true);
 create policy "anyone_insert_closed_months" on closed_months for insert with check (true);
