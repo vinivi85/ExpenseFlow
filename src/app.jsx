@@ -3601,6 +3601,7 @@ alter table closed_months enable row level security;
 create policy "anyone_select_closed_months" on closed_months for select using (true);
 create policy "anyone_insert_closed_months" on closed_months for insert with check (true);
 create policy "anyone_delete_closed_months" on closed_months for delete using (true);
+create policy "anyone_update_closed_months" on closed_months for update using (true);
 `;
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
