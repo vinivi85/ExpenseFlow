@@ -2224,7 +2224,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
         expense_id: r.expense_id || null
       };
     });
-    await client.from('closed_months').upsert({ month_key: monthKey, snapshot, is_closed: true });
+    await client.from('closed_months').upsert({ month_key: monthKey, snapshot, is_closed: true, closed_at: new Date().toISOString() });
 
     setClosingMonth(false);
     setConfirmingClose(false);
