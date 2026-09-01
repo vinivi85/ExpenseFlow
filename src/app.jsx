@@ -920,7 +920,13 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       }, {limit:0,owed:0,available:0,minimum:0});
       return { ...t, cardsList: typeCards, totals };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort((a,b)=>{
+      // Ordem fixa: Conta primeiro, Crédito depois, qualquer outro tipo (ex:
+      // Empréstimo) por último — na ordem em que foram criados.
+      const priority = k => k==='bank' ? 0 : (k==='credit' ? 1 : 2);
+      return priority(a.key) - priority(b.key);
+    });
 
   return (
     <div>
