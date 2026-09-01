@@ -620,7 +620,7 @@ function App(){
         {tab==='list' && <ListTab expenses={listExpenses} totalCount={expenses.length} periodLabel={periodLabels[period]} dateMatchesPeriod={dateMatchesPeriod} loading={loading} client={client} categories={catNames} users={userNames} cards={cardNames} reload={loadExpenses} showToast={showToast} />}
         {tab==='proj' && <ProjectionTab expenses={expenses} client={client} reload={loadExpenses} showToast={showToast} />}
         {tab==='addimport' && <AddOrImportTab client={client} user={user===ALL_VIEW ? (userNames[0]||'') : user} categories={catNames} users={userNames} cards={cardNames} reloadCards={loadCards} expenses={expenses} reload={loadExpenses} showToast={showToast} setTab={setTab} />}
-        {tab==='payables' && <PayablesTab client={client} cards={cards} categories={categories} users={userNames} expenses={expenses} reload={loadExpenses} showToast={showToast} />}
+        {tab==='payables' && <PayablesTab client={client} cards={cards} categories={categories} accountTypes={accountTypes} users={userNames} expenses={expenses} reload={loadExpenses} showToast={showToast} />}
         {tab==='cfg' && <ConfigScreen cfg={cfg} onSave={(c)=>{saveCfg(c);setCfg(c);}} embedded categories={categories} users={users} cards={cards} accountTypes={accountTypes} client={client} reloadCategories={loadCategories} reloadUsers={loadUsers} reloadCards={loadCards} reloadAccountTypes={loadAccountTypes} reloadExpenses={loadExpenses} showToast={showToast} />}
       </div>
 
@@ -2008,7 +2008,7 @@ ${pdfText.slice(0, 30000)}`;
 // automaticamente (com saldo do Plaid/manual quando tiver) e permite adicionar
 // contas avulsas (mortgage, AT&T, etc.). Quando "Valor pago" é preenchido, cria
 // ou atualiza um lançamento com categoria "Pagamento Efetuado" (crédito).
-function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
+function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload,showToast}){
   const [monthKey,setMonthKey] = useState(new Date().toISOString().slice(0,7));
   const [rows,setRows] = useState([]);
   const [balances,setBalances] = useState([]);
@@ -2045,6 +2045,16 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     let candidate = new Date(today.getFullYear(), today.getMonth(), dueDay);
     if(candidate < today) candidate = new Date(today.getFullYear(), today.getMonth()+1, dueDay);
     return Math.round((candidate-today)/86400000);
+  }
+
+  // Quais tipos de conta se comportam como "crédito" (têm mínimo/vencimento/valor em
+  // aberto) — inclui o "Crédito" padrão e qualquer tipo novo criado com esse estilo
+  // (ex: Empréstimo), não só o tipo literal 'credit'.
+  const creditStyleTypeKeys = new Set(
+    (accountTypes&&accountTypes.length ? accountTypes.filter(t=>t.style==='credit').map(t=>t.key) : ['credit'])
+  );
+  function isCreditStyleCard(c){
+    return creditStyleTypeKeys.has(c.account_type||'credit');
   }
 
   async function loadBalances(){
@@ -2114,7 +2124,7 @@ function PayablesTab({client,cards,categories,users,expenses,reload,showToast}){
     const {data} = await client.from('bills_to_pay').select('*').eq('month_key',monthKey);
     const existingRows = data||[];
     const existingIds = new Set(existingRows.filter(r=>r.card_id).map(r=>r.card_id));
-    const creditCards = (cards||[]).filter(c=>(c.account_type||'credit')==='credit');
+    const creditCards = (cards||[]).filter(isCreditStyleCard);
     const missing = creditCards.filter(c=>!existingIds.has(c.id));
 
     // Pras linhas que já existem, atualiza SÓ o "Valor em aberto" com o saldo atual
