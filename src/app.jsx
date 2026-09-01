@@ -3324,7 +3324,12 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                     style={{width:'100%',marginBottom:6}}
                   />
                 ) : (
-                  <div className="ledger-desc" style={{cursor:'pointer',marginBottom:6}} onClick={()=>{setEditingCardId(c.id);setEditingCardName(c.name);}}>{c.name}</div>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                    <div className="ledger-desc" style={{cursor:'pointer'}} onClick={()=>{setEditingCardId(c.id);setEditingCardName(c.name);}}>{c.name}</div>
+                    {isConnected && (
+                      <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff',flexShrink:0}}>PLAID</span>
+                    )}
+                  </div>
                 )}
                 <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap',marginBottom:6}}>
                   {isConnected ? (
