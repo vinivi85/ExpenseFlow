@@ -3236,37 +3236,33 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
             const isConnected = conn?.status==='connected';
             return (
               <div key={c.id} style={{padding:'10px 2px',borderBottom:'1px dashed var(--bezel)'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  {editingCardId===c.id ? (
-                    <input
-                      autoFocus
-                      value={editingCardName}
-                      onChange={e=>setEditingCardName(e.target.value)}
-                      onBlur={()=>saveRenameCard(c.id)}
-                      onKeyDown={e=>{ if(e.key==='Enter') saveRenameCard(c.id); }}
-                      style={{flex:1,marginRight:8}}
-                    />
+                {editingCardId===c.id ? (
+                  <input
+                    autoFocus
+                    value={editingCardName}
+                    onChange={e=>setEditingCardName(e.target.value)}
+                    onBlur={()=>saveRenameCard(c.id)}
+                    onKeyDown={e=>{ if(e.key==='Enter') saveRenameCard(c.id); }}
+                    style={{width:'100%',marginBottom:6}}
+                  />
+                ) : (
+                  <div className="ledger-desc" style={{cursor:'pointer',marginBottom:6}} onClick={()=>{setEditingCardId(c.id);setEditingCardName(c.name);}}>{c.name}</div>
+                )}
+                <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap',marginBottom:6}}>
+                  {isConnected ? (
+                    <>
+                      <span className="link" onClick={()=>syncCard(c.id,c.name)}>{syncingCardId===c.id && connectingCardId!==c.id ? <span className="spinner"></span> : 'sincronizar'}</span>
+                      <span className="link" style={{color:'var(--red)'}} onClick={()=>disconnectCard(c.id,c.name)}>desconectar</span>
+                    </>
                   ) : (
-                    <div>
-                      <div className="ledger-desc" style={{cursor:'pointer'}} onClick={()=>{setEditingCardId(c.id);setEditingCardName(c.name);}}>{c.name}</div>
-                      <div style={{display:'flex',alignItems:'center',gap:5,marginTop:3}}>
-                        <span style={{width:7,height:7,borderRadius:'50%',background:isConnected?'var(--green)':'var(--red)',display:'inline-block'}}></span>
-                        <span className="muted" style={{fontSize:11}}>{isConnected ? 'Conectado ao banco'+(conn.last_synced_at?' · sincronizado':' · nunca sincronizado') : 'Desconectado'}</span>
-                      </div>
-                    </div>
+                    <span className="link" style={{color:'var(--amber)'}} onClick={()=>connectCard(c.id,c.name)}>{connectingCardId===c.id ? <span className="spinner"></span> : 'conectar'}</span>
                   )}
-                  <div style={{display:'flex',gap:12,alignItems:'center'}}>
-                    {isConnected ? (
-                      <>
-                        <span className="link" onClick={()=>syncCard(c.id,c.name)}>{syncingCardId===c.id && connectingCardId!==c.id ? <span className="spinner"></span> : 'sincronizar'}</span>
-                        <span className="link" style={{color:'var(--red)'}} onClick={()=>disconnectCard(c.id,c.name)}>desconectar</span>
-                      </>
-                    ) : (
-                      <span className="link" style={{color:'var(--amber)'}} onClick={()=>connectCard(c.id,c.name)}>{connectingCardId===c.id ? <span className="spinner"></span> : 'conectar'}</span>
-                    )}
-                    <span className="link" onClick={()=>{setEditingCardId(c.id);setEditingCardName(c.name);}}>editar</span>
-                    <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteCard(c.id,c.name)}>excluir</span>
-                  </div>
+                  <span className="link" onClick={()=>{setEditingCardId(c.id);setEditingCardName(c.name);}}>editar</span>
+                  <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteCard(c.id,c.name)}>excluir</span>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:isConnected?'var(--green)':'var(--red)',display:'inline-block',flexShrink:0}}></span>
+                  <span className="muted" style={{fontSize:11}}>{isConnected ? 'Conectado ao banco'+(conn.last_synced_at?' · sincronizado':' · nunca sincronizado') : 'Desconectado'}</span>
                 </div>
                 {syncMsgByCard[c.id] && (
                   <p style={{fontSize:11,margin:'6px 0 0',color: syncMsgByCard[c.id].type==='error' ? 'var(--red)' : 'var(--green)'}}>
@@ -3631,6 +3627,7 @@ alter table account_types enable row level security;
 create policy "anyone_select_account_types" on account_types for select using (true);
 create policy "anyone_insert_account_types" on account_types for insert with check (true);
 create policy "anyone_delete_account_types" on account_types for delete using (true);
+create policy "anyone_update_account_types" on account_types for update using (true);
 
 -- Marca quais meses foram fechados em A Pagar. Mês fechado trava edição das
 -- despesas e desativa "Atualizar lista" — só "Reabrir mês" libera de novo.
