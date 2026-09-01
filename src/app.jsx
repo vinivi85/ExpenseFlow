@@ -488,8 +488,8 @@ function App(){
     if(list.length===0){
       // primeira vez / SQL rodou mas sem seed: garante crédito e conta padrão
       const seeded = await client.from('account_types').insert([
-        {key:'credit',label:'Crédito',icon:'💳',style:'credit'},
-        {key:'bank',label:'Conta',icon:'🏦',style:'bank'}
+        {key:'credit',label:'Crédito',icon:'💳',style:'credit',include_in_payables:true},
+        {key:'bank',label:'Conta',icon:'🏦',style:'bank',include_in_payables:false}
       ]).select();
       list = seeded.data || [];
     }
@@ -2047,14 +2047,13 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
     return Math.round((candidate-today)/86400000);
   }
 
-  // Quais tipos de conta se comportam como "crédito" (têm mínimo/vencimento/valor em
-  // aberto) — inclui o "Crédito" padrão e qualquer tipo novo criado com esse estilo
-  // (ex: Empréstimo), não só o tipo literal 'credit'.
-  const creditStyleTypeKeys = new Set(
-    (accountTypes&&accountTypes.length ? accountTypes.filter(t=>t.style==='credit').map(t=>t.key) : ['credit'])
+  // Quais tipos de conta entram em A Pagar — controlado direto pelo checkbox
+  // "Considerar como despesa a pagar" em Config, não pelo estilo (crédito/conta).
+  const payablesTypeKeys = new Set(
+    (accountTypes&&accountTypes.length ? accountTypes.filter(t=>t.include_in_payables).map(t=>t.key) : ['credit'])
   );
-  function isCreditStyleCard(c){
-    return creditStyleTypeKeys.has(c.account_type||'credit');
+  function isPayableCard(c){
+    return payablesTypeKeys.has(c.account_type||'credit');
   }
 
   async function loadBalances(){
@@ -2124,7 +2123,7 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
     const {data} = await client.from('bills_to_pay').select('*').eq('month_key',monthKey);
     const existingRows = data||[];
     const existingIds = new Set(existingRows.filter(r=>r.card_id).map(r=>r.card_id));
-    const creditCards = (cards||[]).filter(isCreditStyleCard);
+    const creditCards = (cards||[]).filter(isPayableCard);
     const missing = creditCards.filter(c=>!existingIds.has(c.id));
 
     // Pras linhas que já existem, atualiza SÓ o "Valor em aberto" com o saldo atual
@@ -2748,6 +2747,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
   const [newTypeLabel,setNewTypeLabel] = useState('');
   const [newTypeIcon,setNewTypeIcon] = useState('💰');
   const [newTypeStyle,setNewTypeStyle] = useState('credit');
+  const [newTypeIncludeInPayables,setNewTypeIncludeInPayables] = useState(false);
   const [savingType,setSavingType] = useState(false);
   const [deletingTypeId,setDeletingTypeId] = useState(null);
   const [editingCardId,setEditingCardId] = useState(null);
@@ -3059,10 +3059,16 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
       showToast('Esse tipo já existe'); return;
     }
     setSavingType(true);
-    const {error} = await client.from('account_types').insert({ key, label, icon: newTypeIcon||'💰', style: newTypeStyle });
+    const {error} = await client.from('account_types').insert({ key, label, icon: newTypeIcon||'💰', style: newTypeStyle, include_in_payables: newTypeIncludeInPayables });
     setSavingType(false);
     if(error){ showToast('Erro: '+error.message); return; }
-    setNewTypeLabel(''); setNewTypeIcon('💰'); setNewTypeStyle('credit');
+    setNewTypeLabel(''); setNewTypeIcon('💰'); setNewTypeStyle('credit'); setNewTypeIncludeInPayables(false);
+    if(reloadAccountTypes) reloadAccountTypes();
+  }
+
+  async function togglePayablesInclude(t, checked){
+    const {error} = await client.from('account_types').update({ include_in_payables: checked }).eq('id',t.id);
+    if(error){ showToast('Erro: '+error.message); return; }
     if(reloadAccountTypes) reloadAccountTypes();
   }
 
@@ -3156,19 +3162,25 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
           <div style={{fontWeight:700,marginBottom:10,fontSize:14}}>Tipos de Conta</div>
           {(!accountTypes || accountTypes.length===0) && <p className="muted">Carregando…</p>}
           {(accountTypes||[]).map(t=>(
-            <div key={t.id||t.key} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 2px',borderBottom:'1px dashed var(--bezel)'}}>
-              <div>
-                <span style={{marginRight:6}}>{t.icon||'💰'}</span>
-                <span>{t.label}</span>
-                <span className="tag" style={{marginLeft:6}}>{t.style==='bank'?'estilo conta':'estilo crédito'}</span>
+            <div key={t.id||t.key} style={{padding:'8px 2px',borderBottom:'1px dashed var(--bezel)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <span style={{marginRight:6}}>{t.icon||'💰'}</span>
+                  <span>{t.label}</span>
+                  <span className="tag" style={{marginLeft:6}}>{t.style==='bank'?'estilo conta':'estilo crédito'}</span>
+                </div>
+                {(t.key==='credit'||t.key==='bank') ? (
+                  <span className="muted" style={{fontSize:11}}>padrão</span>
+                ) : (
+                  <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteAccountType(t)}>
+                    {deletingTypeId===t.id ? <span className="spinner"></span> : 'excluir'}
+                  </span>
+                )}
               </div>
-              {(t.key==='credit'||t.key==='bank') ? (
-                <span className="muted" style={{fontSize:11}}>padrão</span>
-              ) : (
-                <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteAccountType(t)}>
-                  {deletingTypeId===t.id ? <span className="spinner"></span> : 'excluir'}
-                </span>
-              )}
+              <label style={{display:'flex',gap:6,alignItems:'center',marginTop:6,fontSize:11.5}}>
+                <input type="checkbox" checked={!!t.include_in_payables} onChange={e=>togglePayablesInclude(t,e.target.checked)} />
+                Considerar como despesa a pagar (aparece na aba A Pagar)
+              </label>
             </div>
           ))}
           <div style={{marginTop:12}}>
@@ -3189,6 +3201,10 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                 <option value="bank">Conta (só um saldo)</option>
               </select>
             </div>
+            <label style={{display:'flex',gap:6,alignItems:'center',marginBottom:10,fontSize:11.5}}>
+              <input type="checkbox" checked={newTypeIncludeInPayables} onChange={e=>setNewTypeIncludeInPayables(e.target.checked)} />
+              Considerar como despesa a pagar (aparece na aba A Pagar)
+            </label>
             <button className="btn btn-primary btn-sm" onClick={addAccountType} disabled={savingType}>{savingType?'Salvando…':'Adicionar tipo'}</button>
           </div>
           <p className="muted" style={{marginTop:10}}>Só dá pra excluir um tipo se nenhum cartão estiver usando ele — muda o tipo dos cartões antes (ou exclui os cartões) pra poder excluir o tipo.</p>
@@ -3582,19 +3598,23 @@ create policy "anyone_update_settings" on app_settings for update using (true);
 
 -- Tipos de conta configuráveis (Crédito e Conta vêm de fábrica). "style" decide
 -- como o Resumo trata o cartão: 'credit' mostra limite/saldo em aberto/disponível,
--- 'bank' mostra só um saldo. Novo tipo (ex: Empréstimo) escolhe qual estilo usar.
+-- 'bank' mostra só um saldo. "include_in_payables" decide, direto por checkbox em
+-- Config, se esse tipo entra na aba A Pagar.
 create table if not exists account_types (
   id uuid primary key default uuid_generate_v4(),
   key text not null unique,
   label text not null,
   icon text default '💰',
   style text default 'credit',
+  include_in_payables boolean default false,
   created_at timestamp default now()
 );
-insert into account_types (key,label,icon,style) values
-  ('credit','Crédito','💳','credit'),
-  ('bank','Conta','🏦','bank')
+alter table account_types add column if not exists include_in_payables boolean default false;
+insert into account_types (key,label,icon,style,include_in_payables) values
+  ('credit','Crédito','💳','credit',true),
+  ('bank','Conta','🏦','bank',false)
 on conflict (key) do nothing;
+update account_types set include_in_payables = true where key='credit' and include_in_payables is distinct from true;
 
 alter table account_types enable row level security;
 create policy "anyone_select_account_types" on account_types for select using (true);
