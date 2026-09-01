@@ -119,7 +119,7 @@ function resolveRelativeDate(raw){
 }
 
 function normalizeDate(raw){
-  if(!raw) return new Date().toISOString().slice(0,10);
+  if(!raw) return todayLocalISO();
   const s = raw.trim();
   const relative = resolveRelativeDate(s);
   if(relative) return relative;
@@ -130,7 +130,7 @@ function normalizeDate(raw){
   if(monthDay) return monthDay;
   const d = new Date(s);
   if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
-  return new Date().toISOString().slice(0,10);
+  return todayLocalISO();
 }
 
 // Tenta achar um usuário cadastrado dentro do texto de "Purchased By". Checa nos
@@ -221,6 +221,17 @@ function extractJson(text){
 
 function fmtBRL(n){
   return (n<0?'-':'') + 'R$ ' + Math.abs(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+}
+// toISOString() sempre usa UTC — à noite (fuso atrás de UTC, como o Texas) isso já
+// mostra o dia/mês seguinte mesmo sem ter virado localmente ainda. Essas duas
+// pegam a data local de verdade, no formato YYYY-MM-DD / YYYY-MM.
+function todayLocalISO(){
+  const d = new Date();
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function todayLocalMonthKey(){
+  return todayLocalISO().slice(0,7);
 }
 // Agrupa despesas por descrição, juntando nomes parecidos quando um é prefixo do
 // outro palavra-por-palavra (ex: "Walmart" e "Walmart Supercenter" viram um grupo
@@ -425,7 +436,7 @@ function App(){
   const [user,setUser] = useState(localStorage.getItem('gastos_user')||ALL_VIEW);
   const [tab,setTab] = useState('dash');
   const [period,setPeriod] = useState('month');
-  const [selectedMonth,setSelectedMonth] = useState(new Date().toISOString().slice(0,7));
+  const [selectedMonth,setSelectedMonth] = useState(todayLocalMonthKey());
   const [selectedYear,setSelectedYear] = useState(String(new Date().getFullYear()));
   const [expenses,setExpenses] = useState([]);
   const [categories,setCategories] = useState([]);
@@ -1657,7 +1668,7 @@ function AddTab({client,user,categories,users,cards,reloadCards,reload,showToast
   const [category,setCategory] = useState('');
   const [card,setCard] = useState('');
   const [responsible,setResponsible] = useState(user);
-  const [date,setDate] = useState(new Date().toISOString().slice(0,10));
+  const [date,setDate] = useState(todayLocalISO());
   const [isRecurring,setIsRecurring] = useState(false);
   const [suggesting,setSuggesting] = useState(false);
   const [saving,setSaving] = useState(false);
@@ -2009,7 +2020,7 @@ ${pdfText.slice(0, 30000)}`;
 // contas avulsas (mortgage, AT&T, etc.). Quando "Valor pago" é preenchido, cria
 // ou atualiza um lançamento com categoria "Pagamento Efetuado" (crédito).
 function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload,showToast}){
-  const [monthKey,setMonthKey] = useState(new Date().toISOString().slice(0,7));
+  const [monthKey,setMonthKey] = useState(todayLocalMonthKey());
   const [rows,setRows] = useState([]);
   const [balances,setBalances] = useState([]);
   const [loading,setLoading] = useState(true);
@@ -2336,7 +2347,7 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
       open_amount: row.open_amount===''?null:parseFloat(String(row.open_amount).replace(',','.')),
       minimum_payment: row.minimum_payment===''?null:parseFloat(String(row.minimum_payment).replace(',','.')),
       paid_amount: row.paid_amount===''?null:parseFloat(String(row.paid_amount).replace(',','.')),
-      paid_date: row.paid_amount ? (row.paid_date || new Date().toISOString().slice(0,10)) : null,
+      paid_date: row.paid_amount ? (row.paid_date || todayLocalISO()) : null,
       is_paid: !!row.is_paid
     }).eq('id',row.id);
     setSavingId(null);
@@ -2396,7 +2407,7 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
   async function addStandaloneBill(){
     if(isMonthClosed) return;
     if(!newBill.description.trim()){ showToast('Preencha a descrição'); return; }
-    const paidDate = newBill.paid_amount ? new Date().toISOString().slice(0,10) : null;
+    const paidDate = newBill.paid_amount ? todayLocalISO() : null;
     const match = newBill.paid_amount ? await findMatchingExpense({
       paid_amount: newBill.paid_amount, paid_date: paidDate, card_id: null, description: newBill.description.trim()
     }) : null;
