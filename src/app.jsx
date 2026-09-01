@@ -2761,6 +2761,13 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
   const [newTypeIncludeInPayables,setNewTypeIncludeInPayables] = useState(false);
   const [savingType,setSavingType] = useState(false);
   const [deletingTypeId,setDeletingTypeId] = useState(null);
+  const [confirmingDeleteTypeId,setConfirmingDeleteTypeId] = useState(null);
+  const [editingTypeId,setEditingTypeId] = useState(null);
+  const [editingTypeLabel,setEditingTypeLabel] = useState('');
+  const [editingTypeIcon,setEditingTypeIcon] = useState('💰');
+  const [editingTypeStyle,setEditingTypeStyle] = useState('credit');
+  const [confirmingTypeEditId,setConfirmingTypeEditId] = useState(null);
+  const [savingTypeEdit,setSavingTypeEdit] = useState(false);
   const [editingCardId,setEditingCardId] = useState(null);
   const [editingCardName,setEditingCardName] = useState('');
   const [busy,setBusy] = useState(false);
@@ -3084,18 +3091,54 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
   }
 
   async function deleteAccountType(t){
-    if(t.key==='credit' || t.key==='bank'){ showToast('Não dá pra excluir os tipos padrão (Crédito/Conta)'); return; }
+    const isDefault = t.key==='credit' || t.key==='bank';
+    if(isDefault && confirmingDeleteTypeId!==t.id){
+      setConfirmingDeleteTypeId(t.id);
+      showToast('Esse é um tipo padrão — clica em "confirmar exclusão" de novo pra ter certeza');
+      return;
+    }
     setDeletingTypeId(t.id);
     const {count} = await client.from('cards').select('id',{count:'exact',head:true}).eq('account_type',t.key);
     if(count && count>0){
       setDeletingTypeId(null);
+      setConfirmingDeleteTypeId(null);
       showToast('Tem '+count+' cartão(ões) usando esse tipo — muda o tipo deles antes de excluir');
       return;
     }
     const {error} = await client.from('account_types').delete().eq('id',t.id);
     setDeletingTypeId(null);
+    setConfirmingDeleteTypeId(null);
     if(error){ showToast('Erro: '+error.message); return; }
     showToast('Tipo excluído ✓');
+    if(reloadAccountTypes) reloadAccountTypes();
+  }
+
+  function startEditType(t){
+    setEditingTypeId(t.id);
+    setEditingTypeLabel(t.label);
+    setEditingTypeIcon(t.icon||'💰');
+    setEditingTypeStyle(t.style||'credit');
+    setConfirmingTypeEditId(null);
+  }
+
+  async function saveTypeEdit(t){
+    const isDefault = t.key==='credit' || t.key==='bank';
+    if(isDefault && confirmingTypeEditId!==t.id){
+      setConfirmingTypeEditId(t.id);
+      showToast('Esse é um tipo padrão — clica em "salvar" de novo pra confirmar a alteração');
+      return;
+    }
+    const label = editingTypeLabel.trim();
+    if(!label){ showToast('Preencha o nome do tipo'); return; }
+    setSavingTypeEdit(true);
+    const {error} = await client.from('account_types').update({
+      label, icon: editingTypeIcon||'💰', style: editingTypeStyle
+    }).eq('id', t.id);
+    setSavingTypeEdit(false);
+    if(error){ showToast('Erro: '+error.message); return; }
+    showToast('Tipo atualizado ✓');
+    setEditingTypeId(null);
+    setConfirmingTypeEditId(null);
     if(reloadAccountTypes) reloadAccountTypes();
   }
 
@@ -3172,28 +3215,63 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
         <div className="card">
           <div style={{fontWeight:700,marginBottom:10,fontSize:14}}>Tipos de Conta</div>
           {(!accountTypes || accountTypes.length===0) && <p className="muted">Carregando…</p>}
-          {(accountTypes||[]).map(t=>(
+          {(accountTypes||[]).map(t=>{
+            const isDefault = t.key==='credit' || t.key==='bank';
+            const isEditingType = editingTypeId===t.id;
+            return (
             <div key={t.id||t.key} style={{padding:'8px 2px',borderBottom:'1px dashed var(--bezel)'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              {!isEditingType ? (
+                <>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <div>
+                      <span style={{marginRight:6}}>{t.icon||'💰'}</span>
+                      <span>{t.label}</span>
+                      <span className="tag" style={{marginLeft:6}}>{t.style==='bank'?'estilo conta':'estilo crédito'}</span>
+                      {isDefault && <span className="muted" style={{marginLeft:6,fontSize:11}}>padrão</span>}
+                    </div>
+                    <div style={{display:'flex',gap:12}}>
+                      <span className="link" onClick={()=>startEditType(t)}>editar</span>
+                      <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteAccountType(t)}>
+                        {deletingTypeId===t.id ? <span className="spinner"></span> : (confirmingDeleteTypeId===t.id ? 'confirmar exclusão' : 'excluir')}
+                      </span>
+                    </div>
+                  </div>
+                  <label style={{display:'flex',gap:6,alignItems:'center',marginTop:6,fontSize:11.5}}>
+                    <input type="checkbox" checked={!!t.include_in_payables} onChange={e=>togglePayablesInclude(t,e.target.checked)} />
+                    Considerar como despesa a pagar (aparece na aba A Pagar)
+                  </label>
+                </>
+              ) : (
                 <div>
-                  <span style={{marginRight:6}}>{t.icon||'💰'}</span>
-                  <span>{t.label}</span>
-                  <span className="tag" style={{marginLeft:6}}>{t.style==='bank'?'estilo conta':'estilo crédito'}</span>
+                  {isDefault && <p className="muted" style={{fontSize:11,marginBottom:8,color:'var(--amber)'}}>⚠️ Tipo padrão — alterar pode afetar como o app trata esses cartões. Vai pedir confirmação de novo ao salvar.</p>}
+                  <div className="row2" style={{marginBottom:8}}>
+                    <div className="field" style={{marginBottom:0,flex:1}}>
+                      <label>Nome</label>
+                      <input value={editingTypeLabel} onChange={e=>setEditingTypeLabel(e.target.value)} />
+                    </div>
+                    <div className="field" style={{marginBottom:0,width:60}}>
+                      <label>Ícone</label>
+                      <input value={editingTypeIcon} onChange={e=>setEditingTypeIcon(e.target.value)} maxLength={2} />
+                    </div>
+                  </div>
+                  <div className="field" style={{marginBottom:8}}>
+                    <label>Se comporta como</label>
+                    <select value={editingTypeStyle} onChange={e=>setEditingTypeStyle(e.target.value)}>
+                      <option value="credit">Crédito (limite, saldo em aberto, disponível)</option>
+                      <option value="bank">Conta (só um saldo)</option>
+                    </select>
+                  </div>
+                  <div className="row2">
+                    <button className="btn btn-ghost btn-sm" onClick={()=>{setEditingTypeId(null);setConfirmingTypeEditId(null);}} disabled={savingTypeEdit}>Cancelar</button>
+                    <button className="btn btn-primary btn-sm" onClick={()=>saveTypeEdit(t)} disabled={savingTypeEdit}>
+                      {savingTypeEdit ? <span className="spinner"></span> : (confirmingTypeEditId===t.id ? 'Confirmar alteração' : 'Salvar')}
+                    </button>
+                  </div>
                 </div>
-                {(t.key==='credit'||t.key==='bank') ? (
-                  <span className="muted" style={{fontSize:11}}>padrão</span>
-                ) : (
-                  <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteAccountType(t)}>
-                    {deletingTypeId===t.id ? <span className="spinner"></span> : 'excluir'}
-                  </span>
-                )}
-              </div>
-              <label style={{display:'flex',gap:6,alignItems:'center',marginTop:6,fontSize:11.5}}>
-                <input type="checkbox" checked={!!t.include_in_payables} onChange={e=>togglePayablesInclude(t,e.target.checked)} />
-                Considerar como despesa a pagar (aparece na aba A Pagar)
-              </label>
+              )}
             </div>
-          ))}
+            );
+          })}
           <div style={{marginTop:12}}>
             <div className="row2" style={{marginBottom:8}}>
               <div className="field" style={{marginBottom:0,flex:1}}>
