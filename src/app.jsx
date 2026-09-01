@@ -2125,23 +2125,6 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
       return aPaid - bPaid || (a.card_id?0:1) - (b.card_id?0:1) || new Date(a.created_at)-new Date(b.created_at);
     }));
 
-    // A cada atualização da lista (inclusive depois de confirmar um lançamento),
-    // verifica se todas as despesas do mês já estão consolidadas — se sim e o mês
-    // ainda não foi fechado, pergunta se quer fechar. Só pergunta uma vez por mês
-    // (não fica insistindo se a pessoa disse "não agora"). Uma linha com valor pago
-    // preenchido mas SEM lançamento confirmado ("Aguardando lançamento
-    // correspondente") não conta como pronta, mesmo com o checkbox "Pago" marcado.
-    if(!monthIsClosed && formattedRows.length>0){
-      const allConsolidated = formattedRows.every(r=>{
-        const hasPaidValue = r.paid_amount!=null && r.paid_amount!=='';
-        if(hasPaidValue && !r.expense_id) return false; // ainda aguardando confirmação
-        return r.is_paid===true || r.expense_id!=null;
-      });
-      setShowClosePrompt(allConsolidated && closePromptDismissedFor!==monthKey);
-    } else {
-      setShowClosePrompt(false);
-    }
-
     setLoading(false);
   }
 
@@ -2203,6 +2186,22 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
     }
     init();
   },[monthKey, client, cards]);
+
+  // Roda direto em cima do estado "rows" — qualquer mudança na lista reavalia se
+  // está tudo pronto pra fechar, não só quando loadRows() é chamado. Uma linha com
+  // saldo zerado (nada a pagar) já conta como resolvida sozinha; uma com valor
+  // pago preenchido mas sem lançamento confirmado NÃO conta, mesmo com o
+  // checkbox "Pago" marcado.
+  useEffect(()=>{
+    if(isMonthClosed || rows.length===0){ setShowClosePrompt(false); return; }
+    const allConsolidated = rows.every(r=>{
+      if(Number(r.open_amount||0)<=0) return true;
+      const hasPaidValue = r.paid_amount!=null && r.paid_amount!=='';
+      if(hasPaidValue && !r.expense_id) return false;
+      return r.is_paid===true || r.expense_id!=null;
+    });
+    setShowClosePrompt(allConsolidated && closePromptDismissedFor!==monthKey);
+  },[rows, isMonthClosed, monthKey, closePromptDismissedFor]);
 
   function changeMonth(delta){
     const d = new Date(monthKey+'-02');
