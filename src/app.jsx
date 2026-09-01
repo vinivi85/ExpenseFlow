@@ -3085,8 +3085,14 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
   }
 
   async function togglePayablesInclude(t, checked){
-    const {error} = await client.from('account_types').update({ include_in_payables: checked }).eq('id',t.id);
+    const {data,error} = await client.from('account_types').update({ include_in_payables: checked }).eq('id',t.id).select();
     if(error){ showToast('Erro: '+error.message); return; }
+    if(!data || data.length===0){
+      // Sem erro mas 0 linhas alteradas — normalmente é falta de permissão de update
+      // no banco (RLS), que falha caladinho em vez de dar erro.
+      showToast('Não salvou — falta permissão de update em account_types no Supabase. Roda o SQL de novo.');
+      return;
+    }
     if(reloadAccountTypes) reloadAccountTypes();
   }
 
@@ -3131,11 +3137,15 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
     const label = editingTypeLabel.trim();
     if(!label){ showToast('Preencha o nome do tipo'); return; }
     setSavingTypeEdit(true);
-    const {error} = await client.from('account_types').update({
+    const {data,error} = await client.from('account_types').update({
       label, icon: editingTypeIcon||'💰', style: editingTypeStyle
-    }).eq('id', t.id);
+    }).eq('id', t.id).select();
     setSavingTypeEdit(false);
     if(error){ showToast('Erro: '+error.message); return; }
+    if(!data || data.length===0){
+      showToast('Não salvou — falta permissão de update em account_types no Supabase. Roda o SQL de novo.');
+      return;
+    }
     showToast('Tipo atualizado ✓');
     setEditingTypeId(null);
     setConfirmingTypeEditId(null);
