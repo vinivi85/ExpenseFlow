@@ -2128,9 +2128,15 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
     // A cada atualização da lista (inclusive depois de confirmar um lançamento),
     // verifica se todas as despesas do mês já estão consolidadas — se sim e o mês
     // ainda não foi fechado, pergunta se quer fechar. Só pergunta uma vez por mês
-    // (não fica insistindo se a pessoa disse "não agora").
+    // (não fica insistindo se a pessoa disse "não agora"). Uma linha com valor pago
+    // preenchido mas SEM lançamento confirmado ("Aguardando lançamento
+    // correspondente") não conta como pronta, mesmo com o checkbox "Pago" marcado.
     if(!monthIsClosed && formattedRows.length>0){
-      const allConsolidated = formattedRows.every(r=>r.is_paid===true || r.expense_id!=null);
+      const allConsolidated = formattedRows.every(r=>{
+        const hasPaidValue = r.paid_amount!=null && r.paid_amount!=='';
+        if(hasPaidValue && !r.expense_id) return false; // ainda aguardando confirmação
+        return r.is_paid===true || r.expense_id!=null;
+      });
       setShowClosePrompt(allConsolidated && closePromptDismissedFor!==monthKey);
     } else {
       setShowClosePrompt(false);
