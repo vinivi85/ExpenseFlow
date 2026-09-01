@@ -2029,6 +2029,8 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
   const [closingMonth,setClosingMonth] = useState(false);
   const [isMonthClosed,setIsMonthClosed] = useState(false);
   const [reopening,setReopening] = useState(false);
+  const [showClosePrompt,setShowClosePrompt] = useState(false);
+  const [closePromptDismissedFor,setClosePromptDismissedFor] = useState(null);
   const [consolidationDays,setConsolidationDays] = useState(7);
   const [matchConfirm,setMatchConfirm] = useState(null); // {rowId, rowDescription, candidates, index}
   const [confirmingMatch,setConfirmingMatch] = useState(false);
@@ -2122,6 +2124,18 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
       const bPaid = (b.is_paid===true || b.expense_id!=null) ? 1 : 0;
       return aPaid - bPaid || (a.card_id?0:1) - (b.card_id?0:1) || new Date(a.created_at)-new Date(b.created_at);
     }));
+
+    // A cada atualização da lista (inclusive depois de confirmar um lançamento),
+    // verifica se todas as despesas do mês já estão consolidadas — se sim e o mês
+    // ainda não foi fechado, pergunta se quer fechar. Só pergunta uma vez por mês
+    // (não fica insistindo se a pessoa disse "não agora").
+    if(!monthIsClosed && formattedRows.length>0){
+      const allConsolidated = formattedRows.every(r=>r.is_paid===true || r.expense_id!=null);
+      setShowClosePrompt(allConsolidated && closePromptDismissedFor!==monthKey);
+    } else {
+      setShowClosePrompt(false);
+    }
+
     setLoading(false);
   }
 
@@ -2490,6 +2504,17 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
       <button className="btn btn-ghost" style={{marginBottom:16}} onClick={checkForNewCards} disabled={checkingNew||isMonthClosed}>
         {isMonthClosed ? '🔒 Mês fechado' : (checkingNew ? <span className="spinner"></span> : '🔄 Atualizar lista')}
       </button>
+
+      {showClosePrompt && (
+        <div className="card" style={{borderColor:'var(--green)',marginBottom:16}}>
+          <div style={{fontWeight:700,marginBottom:6}}>✅ Tudo consolidado em {monthLabel}</div>
+          <p className="muted" style={{marginBottom:12}}>Todas as despesas desse mês já têm pagamento confirmado. Quer fechar o mês agora?</p>
+          <div className="row2">
+            <button className="btn btn-ghost" onClick={()=>{setClosePromptDismissedFor(monthKey);setShowClosePrompt(false);}}>Não agora</button>
+            <button className="btn btn-primary" onClick={()=>{setShowClosePrompt(false);setConfirmingClose(true);}}>Fechar mês</button>
+          </div>
+        </div>
+      )}
 
       {pendingNewCards.length>0 && (
         <div className="card" style={{borderColor:'var(--green)'}}>
