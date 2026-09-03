@@ -3059,12 +3059,28 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
   async function saveRename(id){
     const name = editingName.trim();
     if(!name){ setEditingId(null); return; }
+    const oldCat = (categories||[]).find(c=>c.id===id);
+    const oldName = oldCat?.name;
     setBusy(true);
     const {error} = await client.from('categories').update({name}).eq('id',id);
+    if(error){ setBusy(false); setEditingId(null); showToast('Erro: '+error.message); return; }
+    // Categoria é salva como texto na despesa, não uma referência — sem isso, as
+    // despesas antigas ficavam com o nome velho pra sempre e não apareciam mais
+    // na busca por essa categoria.
+    if(oldName && oldName!==name){
+      const {error: expError} = await client.from('expenses').update({category:name}).eq('category',oldName);
+      if(expError){
+        setBusy(false); setEditingId(null);
+        showToast('Categoria renomeada, mas erro ao atualizar despesas antigas: '+expError.message);
+        reloadCategories();
+        return;
+      }
+    }
     setBusy(false);
     setEditingId(null);
-    if(error){ showToast('Erro: '+error.message); return; }
+    showToast('Categoria renomeada ✓');
     reloadCategories();
+    if(reloadExpenses) reloadExpenses();
   }
 
   async function addUser(){
