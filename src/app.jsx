@@ -688,7 +688,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
         showToast(msg); setSyncResult({type:'info', text:msg, at:new Date(), action:'Sincronizar tudo'});
         return;
       }
-      const balErrs = (data.results||[]).flatMap(r=>r.balanceErrors||[]);
+      const balErrs = (data.results||[]).flatMap(r=>(r.balanceErrors||[]).map(e=>`${r.institution||'Banco'}: ${e}`));
       const itemErrs = (data.results||[]).filter(r=>r.error).map(r=>`${r.institution||'Banco'}: ${r.error}`);
       let finalMsg, finalType;
       if(balErrs.length>0 || itemErrs.length>0){
