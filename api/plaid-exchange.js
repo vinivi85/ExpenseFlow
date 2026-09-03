@@ -10,6 +10,13 @@ function plaidBaseUrl() {
   return env === 'production' ? 'https://production.plaid.com' : 'https://sandbox.plaid.com';
 }
 
+function plaidCredsFor(account) {
+  if (Number(account) === 2) {
+    return { clientId: process.env.PLAID_CLIENT_ID_2, secret: process.env.PLAID_SECRET_2 };
+  }
+  return { clientId: process.env.PLAID_CLIENT_ID, secret: process.env.PLAID_SECRET };
+}
+
 async function supaFetch(supabaseUrl, serviceKey, path, opts = {}) {
   return fetch(`${supabaseUrl}/rest/v1/${path}`, {
     ...opts,
@@ -28,12 +35,12 @@ export default async function handler(req, res) {
     return;
   }
 
-  const clientId = process.env.PLAID_CLIENT_ID;
-  const secret = process.env.PLAID_SECRET;
+  const plaidAccount = req.body?.plaid_account || 1;
+  const { clientId, secret } = plaidCredsFor(plaidAccount);
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!clientId || !secret || !supabaseUrl || !serviceKey) {
-    res.status(500).json({ error: 'Variáveis de ambiente do Plaid/Supabase não configuradas no servidor' });
+    res.status(500).json({ error: `Credenciais da conta Plaid ${plaidAccount} ou Supabase não configuradas no servidor` });
     return;
   }
 
@@ -77,6 +84,7 @@ export default async function handler(req, res) {
         plaid_item_id: itemId,
         plaid_access_token: accessToken,
         institution_name: institution_name || null,
+        plaid_account: plaidAccount,
       }),
     });
     if (!itemInsertRes.ok) {

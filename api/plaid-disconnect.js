@@ -9,6 +9,13 @@ function plaidBaseUrl() {
   return env === 'production' ? 'https://production.plaid.com' : 'https://sandbox.plaid.com';
 }
 
+function plaidCredsFor(account) {
+  if (Number(account) === 2) {
+    return { clientId: process.env.PLAID_CLIENT_ID_2, secret: process.env.PLAID_SECRET_2 };
+  }
+  return { clientId: process.env.PLAID_CLIENT_ID, secret: process.env.PLAID_SECRET };
+}
+
 async function supaFetch(supabaseUrl, serviceKey, path, opts = {}) {
   return fetch(`${supabaseUrl}/rest/v1/${path}`, {
     ...opts,
@@ -27,8 +34,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  const clientId = process.env.PLAID_CLIENT_ID;
-  const secret = process.env.PLAID_SECRET;
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
@@ -59,6 +64,7 @@ export default async function handler(req, res) {
       if (!remaining || remaining.length === 0) {
         const itemRowRes = await supaFetch(supabaseUrl, serviceKey, `plaid_items?id=eq.${itemRef}&select=*`);
         const itemRow = (await itemRowRes.json())[0];
+        const { clientId, secret } = plaidCredsFor(itemRow?.plaid_account);
         if (itemRow && clientId && secret) {
           try {
             await fetch(`${plaidBaseUrl()}/item/remove`, {

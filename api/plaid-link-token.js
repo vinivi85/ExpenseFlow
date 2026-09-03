@@ -1,7 +1,9 @@
 // Vercel Serverless Function
 // Cria um "link_token" do Plaid — o token temporário que inicializa o widget
-// de conexão (Plaid Link) no navegador. Usa PLAID_CLIENT_ID e PLAID_SECRET
-// guardados como variáveis de ambiente na Vercel (nunca expostos no frontend).
+// de conexão (Plaid Link) no navegador. Usa PLAID_CLIENT_ID/PLAID_SECRET (conta 1)
+// ou PLAID_CLIENT_ID_2/PLAID_SECRET_2 (conta 2), conforme o tipo de conta que está
+// sendo conectado escolheu em Config — duas contas Plaid separadas, cada uma com
+// seu próprio limite de 10 conexões, juntas dão 20.
 //
 // PLAID_ENV deve ser "sandbox" ou "production" (variável de ambiente).
 
@@ -10,16 +12,23 @@ function plaidBaseUrl() {
   return env === 'production' ? 'https://production.plaid.com' : 'https://sandbox.plaid.com';
 }
 
+function plaidCredsFor(account) {
+  if (Number(account) === 2) {
+    return { clientId: process.env.PLAID_CLIENT_ID_2, secret: process.env.PLAID_SECRET_2 };
+  }
+  return { clientId: process.env.PLAID_CLIENT_ID, secret: process.env.PLAID_SECRET };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Método não permitido' });
     return;
   }
 
-  const clientId = process.env.PLAID_CLIENT_ID;
-  const secret = process.env.PLAID_SECRET;
+  const plaidAccount = req.body?.plaid_account || 1;
+  const { clientId, secret } = plaidCredsFor(plaidAccount);
   if (!clientId || !secret) {
-    res.status(500).json({ error: 'PLAID_CLIENT_ID/PLAID_SECRET não configurados no servidor' });
+    res.status(500).json({ error: `Credenciais da conta Plaid ${plaidAccount} não configuradas no servidor` });
     return;
   }
 

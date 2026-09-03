@@ -3,7 +3,7 @@
 // login tiver outras contas associadas a outros cartões, todas são sincronizadas
 // juntas (é assim que a API do Plaid funciona: sync é por login, não por conta).
 
-import { syncOneItem } from './_plaid-lib.js';
+import { syncOneItem, plaidCredsFor } from './_plaid-lib.js';
 
 async function supaFetch(supabaseUrl, serviceKey, path, opts = {}) {
   return fetch(`${supabaseUrl}/rest/v1/${path}`, {
@@ -23,11 +23,9 @@ export default async function handler(req, res) {
     return;
   }
 
-  const clientId = process.env.PLAID_CLIENT_ID;
-  const secret = process.env.PLAID_SECRET;
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!clientId || !secret || !supabaseUrl || !serviceKey) {
+  if (!process.env.PLAID_CLIENT_ID || !process.env.PLAID_SECRET || !supabaseUrl || !serviceKey) {
     res.status(500).json({ error: 'Variáveis de ambiente do Plaid/Supabase não configuradas no servidor' });
     return;
   }
@@ -60,6 +58,7 @@ export default async function handler(req, res) {
     const cardById = {};
     cardRows.forEach(c => { cardById[c.id] = c.name; });
 
+    const { clientId, secret } = plaidCredsFor(item.plaid_account);
     const result = await syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, connections, cardById, categoryNames, defaultUser });
     if (result.error) { res.status(500).json({ error: result.error }); return; }
 

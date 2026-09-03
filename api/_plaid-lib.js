@@ -12,6 +12,17 @@ function plaidBaseUrl() {
   return env === 'production' ? 'https://production.plaid.com' : 'https://sandbox.plaid.com';
 }
 
+// Duas contas Plaid separadas, cada uma com seu próprio limite de 10 conexões —
+// deixa 20 no total. "1" é a conta original (variáveis sem sufixo), "2" é a nova
+// (variáveis com sufixo _2). O tipo de conta (cartão/conta/empréstimo) decide, em
+// Config, qual das duas usar.
+function plaidCredsFor(account) {
+  if (Number(account) === 2) {
+    return { clientId: process.env.PLAID_CLIENT_ID_2, secret: process.env.PLAID_SECRET_2 };
+  }
+  return { clientId: process.env.PLAID_CLIENT_ID, secret: process.env.PLAID_SECRET };
+}
+
 const PLAID_CATEGORY_MAP = {
   FOOD_AND_DRINK: 'Restaurante',
   GROCERIES: 'Mercado',
@@ -199,7 +210,7 @@ async function syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, co
 }
 
 // Sincroniza TODOS os items (logins) ativos de uma vez (usado pelo botão "Sincronizar tudo" e pelo cron).
-async function syncAllConnections({ supabaseUrl, serviceKey, clientId, secret }) {
+async function syncAllConnections({ supabaseUrl, serviceKey }) {
   const [itemRes, connRes, cardRes, catRes, userRes] = await Promise.all([
     supaFetch(supabaseUrl, serviceKey, 'plaid_items?select=*'),
     supaFetch(supabaseUrl, serviceKey, 'plaid_connections?select=*'),
@@ -218,10 +229,11 @@ async function syncAllConnections({ supabaseUrl, serviceKey, clientId, secret })
   const results = [];
   for (const item of items) {
     const connections = allConnections.filter(c => c.item_ref === item.id);
+    const { clientId, secret } = plaidCredsFor(item.plaid_account);
     const result = await syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, connections, cardById, categoryNames, defaultUser });
     results.push({ institution: item.institution_name || 'Banco', ...result });
   }
   return results;
 }
 
-export { syncOneItem, syncAllConnections, plaidBaseUrl, fetchAndStoreBalance, fetchBalancesForItem, applyBalanceToConnection };
+export { syncOneItem, syncAllConnections, plaidBaseUrl, plaidCredsFor, fetchAndStoreBalance, fetchBalancesForItem, applyBalanceToConnection };
