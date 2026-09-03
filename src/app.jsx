@@ -2788,7 +2788,6 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
   const [newTypeLabel,setNewTypeLabel] = useState('');
   const [newTypeIcon,setNewTypeIcon] = useState('💰');
   const [newTypeStyle,setNewTypeStyle] = useState('credit');
-  const [newTypePlaidAccount,setNewTypePlaidAccount] = useState(1);
   const [newTypeIncludeInPayables,setNewTypeIncludeInPayables] = useState(false);
   const [savingType,setSavingType] = useState(false);
   const [deletingTypeId,setDeletingTypeId] = useState(null);
@@ -2797,7 +2796,6 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
   const [editingTypeLabel,setEditingTypeLabel] = useState('');
   const [editingTypeIcon,setEditingTypeIcon] = useState('💰');
   const [editingTypeStyle,setEditingTypeStyle] = useState('credit');
-  const [editingTypePlaidAccount,setEditingTypePlaidAccount] = useState(1);
   const [confirmingTypeEditId,setConfirmingTypeEditId] = useState(null);
   const [savingTypeEdit,setSavingTypeEdit] = useState(false);
   const [editingCardId,setEditingCardId] = useState(null);
@@ -2850,8 +2848,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
 
   function plaidAccountForCard(cardId){
     const card = (cards||[]).find(c=>c.id===cardId);
-    const type = (accountTypes||[]).find(t=>t.key===(card?.account_type||'credit'));
-    return type?.plaid_account || 1;
+    return card?.plaid_account || 1;
   }
 
   async function connectCard(cardId, cardName){
@@ -3119,10 +3116,10 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
       showToast('Esse tipo já existe'); return;
     }
     setSavingType(true);
-    const {error} = await client.from('account_types').insert({ key, label, icon: newTypeIcon||'💰', style: newTypeStyle, include_in_payables: newTypeIncludeInPayables, plaid_account: newTypePlaidAccount });
+    const {error} = await client.from('account_types').insert({ key, label, icon: newTypeIcon||'💰', style: newTypeStyle, include_in_payables: newTypeIncludeInPayables });
     setSavingType(false);
     if(error){ showToast('Erro: '+error.message); return; }
-    setNewTypeLabel(''); setNewTypeIcon('💰'); setNewTypeStyle('credit'); setNewTypeIncludeInPayables(false); setNewTypePlaidAccount(1);
+    setNewTypeLabel(''); setNewTypeIcon('💰'); setNewTypeStyle('credit'); setNewTypeIncludeInPayables(false);
     if(reloadAccountTypes) reloadAccountTypes();
   }
 
@@ -3166,7 +3163,6 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
     setEditingTypeLabel(t.label);
     setEditingTypeIcon(t.icon||'💰');
     setEditingTypeStyle(t.style||'credit');
-    setEditingTypePlaidAccount(t.plaid_account||1);
     setConfirmingTypeEditId(null);
   }
 
@@ -3181,7 +3177,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
     if(!label){ showToast('Preencha o nome do tipo'); return; }
     setSavingTypeEdit(true);
     const {data,error} = await client.from('account_types').update({
-      label, icon: editingTypeIcon||'💰', style: editingTypeStyle, plaid_account: editingTypePlaidAccount
+      label, icon: editingTypeIcon||'💰', style: editingTypeStyle
     }).eq('id', t.id).select();
     setSavingTypeEdit(false);
     if(error){ showToast('Erro: '+error.message); return; }
@@ -3227,6 +3223,12 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
     setEditingCardId(null);
     if(error){ showToast('Erro: '+error.message); return; }
     reloadCards();
+  }
+
+  async function setCardPlaidAccount(cardId, plaidAccount){
+    const {error} = await client.from('cards').update({ plaid_account: plaidAccount }).eq('id',cardId);
+    if(error){ showToast('Erro: '+error.message); return; }
+    if(reloadCards) reloadCards();
   }
 
   const body = (
@@ -3280,7 +3282,6 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                       <span style={{marginRight:6}}>{t.icon||'💰'}</span>
                       <span>{t.label}</span>
                       <span className="tag" style={{marginLeft:6}}>{t.style==='bank'?'estilo conta':'estilo crédito'}</span>
-                      <span className="tag" style={{marginLeft:6}}>Plaid {t.plaid_account||1}</span>
                       {isDefault && <span className="muted" style={{marginLeft:6,fontSize:11}}>padrão</span>}
                     </div>
                     <div style={{display:'flex',gap:12}}>
@@ -3315,13 +3316,6 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                       <option value="bank">Conta (só um saldo)</option>
                     </select>
                   </div>
-                  <div className="field" style={{marginBottom:8}}>
-                    <label>Conta Plaid (pra conexão automática)</label>
-                    <select value={editingTypePlaidAccount} onChange={e=>setEditingTypePlaidAccount(Number(e.target.value))}>
-                      <option value={1}>Conta 1</option>
-                      <option value={2}>Conta 2</option>
-                    </select>
-                  </div>
                   <div className="row2">
                     <button className="btn btn-ghost btn-sm" onClick={()=>{setEditingTypeId(null);setConfirmingTypeEditId(null);}} disabled={savingTypeEdit}>Cancelar</button>
                     <button className="btn btn-primary btn-sm" onClick={()=>saveTypeEdit(t)} disabled={savingTypeEdit}>
@@ -3349,13 +3343,6 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
               <select value={newTypeStyle} onChange={e=>setNewTypeStyle(e.target.value)}>
                 <option value="credit">Crédito (limite, saldo em aberto, disponível)</option>
                 <option value="bank">Conta (só um saldo)</option>
-              </select>
-            </div>
-            <div className="field" style={{marginBottom:8}}>
-              <label>Conta Plaid (pra conexão automática)</label>
-              <select value={newTypePlaidAccount} onChange={e=>setNewTypePlaidAccount(Number(e.target.value))}>
-                <option value={1}>Conta 1</option>
-                <option value={2}>Conta 2</option>
               </select>
             </div>
             <label style={{display:'flex',gap:6,alignItems:'center',marginBottom:10,fontSize:11.5}}>
@@ -3405,6 +3392,15 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                 )}
                 {hasError && (
                   <p className="muted" style={{fontSize:11,color:'var(--amber)',marginBottom:6}}>O login desse banco parou de responder no Plaid — precisa reconectar pra voltar a sincronizar saldo.</p>
+                )}
+                {!isConnected && !hasError && (
+                  <label style={{display:'flex',alignItems:'center',gap:6,fontSize:11,marginBottom:6}}>
+                    <span className="muted">Conta Plaid pra conectar:</span>
+                    <select value={c.plaid_account||1} onChange={ev=>setCardPlaidAccount(c.id, Number(ev.target.value))} style={{width:'auto',padding:'3px 6px',fontSize:11}}>
+                      <option value={1}>Conta 1</option>
+                      <option value={2}>Conta 2</option>
+                    </select>
+                  </label>
                 )}
                 <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap',marginBottom:6}}>
                   {hasError ? (
@@ -3646,6 +3642,7 @@ alter table cards add column if not exists account_type text default 'credit';
 alter table cards add column if not exists minimum_payment numeric;
 alter table cards add column if not exists due_day integer;
 alter table cards add column if not exists due_month integer;
+alter table cards add column if not exists plaid_account integer default 1;
 
 -- Conexoes com o Plaid: guarda o access_token de cada conta bancaria conectada.
 -- RLS ativado SEM nenhuma politica = ninguem com a chave publica (anon/publishable)
