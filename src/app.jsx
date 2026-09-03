@@ -3388,6 +3388,9 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                     {hasError && (
                       <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--amber)',color:'#fff',flexShrink:0}}>⚠️ RECONECTAR</span>
                     )}
+                    {!isConnected && !hasError && (
+                      <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--red)',color:'#fff',opacity:0.45,flexShrink:0}}>PLAID</span>
+                    )}
                   </div>
                 )}
                 {hasError && (
