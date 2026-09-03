@@ -808,7 +808,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
         </div>
         {connected && (
           <div style={{marginBottom:6}}>
-            <span style={{display:'inline-block',fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff'}}>PLAID</span>
+            <span style={{display:'inline-block',fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff'}}>PLAID_{b.plaid_account||1}</span>
           </div>
         )}
 
@@ -2573,7 +2573,8 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
       {loading && <div className="empty">Carregando…</div>}
 
       {!loading && rows.map(row=>{
-        const isConnected = row.card_id && balances.some(b=>b.card_id===row.card_id && b.status==='connected');
+        const rowConn = row.card_id ? balances.find(b=>b.card_id===row.card_id && b.status==='connected') : null;
+        const isConnected = !!rowConn;
         const rowCard = row.card_id ? (cards||[]).find(c=>c.id===row.card_id) : null;
         const cardMinimum = rowCard?.minimum_payment;
         const belowMinimum = cardMinimum!=null && Number(row.minimum_payment||0) < Number(cardMinimum) && Number(row.minimum_payment||0) > 0;
@@ -2592,7 +2593,7 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
             </div>
           )}
           {isConnected && (
-            <span style={{position:'absolute',top:10,right:10,fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff'}}>PLAID</span>
+            <span style={{position:'absolute',top:10,right:10,fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff'}}>PLAID_{rowConn.plaid_account||1}</span>
           )}
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:cardMinimum!=null?2:8,paddingRight:isConnected?54:0}}>
             {row.card_id ? (
