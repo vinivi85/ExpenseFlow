@@ -3383,7 +3383,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
                     <div className="ledger-desc" style={{cursor:'pointer'}} onClick={()=>{setEditingCardId(c.id);setEditingCardName(c.name);}}>{c.name}</div>
                     {isConnected && (
-                      <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff',flexShrink:0}}>PLAID</span>
+                      <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff',flexShrink:0}}>PLAID_{conn.plaid_account||1}</span>
                     )}
                     {hasError && (
                       <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--amber)',color:'#fff',flexShrink:0}}>⚠️ RECONECTAR</span>

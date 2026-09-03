@@ -18,12 +18,13 @@ export default async function handler(req, res) {
 
   try {
     const upstream = await fetch(
-      `${supabaseUrl}/rest/v1/plaid_connections?select=card_id,institution_name,account_name,status,last_synced_at,current_balance,available_balance,credit_limit,iso_currency_code,balance_updated_at`,
+      `${supabaseUrl}/rest/v1/plaid_connections?select=card_id,institution_name,account_name,status,last_synced_at,current_balance,available_balance,credit_limit,iso_currency_code,balance_updated_at,plaid_items(plaid_account)`,
       {
         headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` },
       }
     );
-    const data = await upstream.json();
+    const dataRaw = await upstream.json();
+    const data = Array.isArray(dataRaw) ? dataRaw.map(c => ({ ...c, plaid_account: c.plaid_items?.plaid_account || 1, plaid_items: undefined })) : dataRaw;
     if (!upstream.ok) {
       res.status(upstream.status).json({ error: 'Erro ao consultar conexões' });
       return;
