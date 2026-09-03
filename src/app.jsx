@@ -3352,6 +3352,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
           {(cards||[]).map(c=>{
             const conn = plaidConns[c.id];
             const isConnected = conn?.status==='connected';
+            const hasError = conn?.status==='error';
             return (
               <div key={c.id} style={{padding:'10px 2px',borderBottom:'1px dashed var(--bezel)'}}>
                 {editingCardId===c.id ? (
@@ -3369,10 +3370,21 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                     {isConnected && (
                       <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff',flexShrink:0}}>PLAID</span>
                     )}
+                    {hasError && (
+                      <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--amber)',color:'#fff',flexShrink:0}}>⚠️ RECONECTAR</span>
+                    )}
                   </div>
                 )}
+                {hasError && (
+                  <p className="muted" style={{fontSize:11,color:'var(--amber)',marginBottom:6}}>O login desse banco parou de responder no Plaid — precisa reconectar pra voltar a sincronizar saldo.</p>
+                )}
                 <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap',marginBottom:6}}>
-                  {isConnected ? (
+                  {hasError ? (
+                    <>
+                      <span className="link" style={{color:'var(--amber)'}} onClick={()=>connectCard(c.id,c.name)}>{connectingCardId===c.id ? <span className="spinner"></span> : 'reconectar'}</span>
+                      <span className="link" style={{color:'var(--red)'}} onClick={()=>disconnectCard(c.id,c.name)}>desconectar</span>
+                    </>
+                  ) : isConnected ? (
                     <>
                       <span className="link" onClick={()=>syncCard(c.id,c.name)}>{syncingCardId===c.id && connectingCardId!==c.id ? <span className="spinner"></span> : 'sincronizar'}</span>
                       <span className="link" style={{color:'var(--red)'}} onClick={()=>disconnectCard(c.id,c.name)}>desconectar</span>
@@ -3384,8 +3396,8 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                   <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteCard(c.id,c.name)}>excluir</span>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:5}}>
-                  <span style={{width:7,height:7,borderRadius:'50%',background:isConnected?'var(--green)':'var(--red)',display:'inline-block',flexShrink:0}}></span>
-                  <span className="muted" style={{fontSize:11}}>{isConnected ? 'Conectado ao banco'+(conn.last_synced_at?' · sincronizado':' · nunca sincronizado') : 'Desconectado'}</span>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:isConnected?'var(--green)':(hasError?'var(--amber)':'var(--red)'),display:'inline-block',flexShrink:0}}></span>
+                  <span className="muted" style={{fontSize:11}}>{isConnected ? 'Conectado ao banco'+(conn.last_synced_at?' · sincronizado':' · nunca sincronizado') : (hasError ? 'Erro no login · precisa reconectar' : 'Desconectado')}</span>
                 </div>
                 {syncMsgByCard[c.id] && (
                   <p style={{fontSize:11,margin:'6px 0 0',color: syncMsgByCard[c.id].type==='error' ? 'var(--red)' : 'var(--green)'}}>

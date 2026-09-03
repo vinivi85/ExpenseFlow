@@ -178,16 +178,22 @@ async function syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, co
   const balResult = await fetchBalancesForItem({ clientId, secret, accessToken: item.plaid_access_token });
   if (balResult.error) {
     balanceErrors.push(`(login inteiro) ${balResult.error}`);
+    // Marca como "error" (não "connected") — Config mostra aviso e troca o botão
+    // pra "reconectar". Se um próximo sync funcionar, volta pra "connected" sozinho.
+    await supaFetch(supabaseUrl, serviceKey, `plaid_connections?item_ref=eq.${item.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'error', last_synced_at: new Date().toISOString() }),
+    });
   } else {
     for (const conn of connections) {
       const result = await applyBalanceToConnection({ supabaseUrl, serviceKey, conn, accounts: balResult.accounts });
       if (result.error) balanceErrors.push(`${conn.account_name || conn.id}: ${result.error}`);
     }
+    await supaFetch(supabaseUrl, serviceKey, `plaid_connections?item_ref=eq.${item.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'connected', last_synced_at: new Date().toISOString() }),
+    });
   }
-  await supaFetch(supabaseUrl, serviceKey, `plaid_connections?item_ref=eq.${item.id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ status: 'connected', last_synced_at: new Date().toISOString() }),
-  });
 
   return { imported: 0, pending: toPending.length, balanceErrors: balanceErrors.length ? balanceErrors : undefined };
 }
