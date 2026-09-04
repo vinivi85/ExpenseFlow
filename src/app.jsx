@@ -808,7 +808,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
         </div>
         {connected && (
           <div style={{marginBottom:6}}>
-            <span style={{display:'inline-block',fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff'}}>PLAID_{b.plaid_account||1}</span>
+            <span style={{display:'inline-block',fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:b.plaid_account===2?'var(--blue)':'var(--green)',color:'#fff'}}>PLAID_{b.plaid_account||1}</span>
           </div>
         )}
 
@@ -2605,7 +2605,7 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
             </div>
           )}
           {isConnected && (
-            <span style={{position:'absolute',top:10,right:10,fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff'}}>PLAID_{rowConn.plaid_account||1}</span>
+            <span style={{position:'absolute',top:10,right:10,fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:rowConn.plaid_account===2?'var(--blue)':'var(--green)',color:'#fff'}}>PLAID_{rowConn.plaid_account||1}</span>
           )}
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:cardMinimum!=null?2:8,paddingRight:isConnected?54:0}}>
             {row.card_id ? (
@@ -3396,7 +3396,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                 return (
                   <>
                     <span className="tag">Plaid_1: {count1} de 10</span>
-                    <span className="tag">Plaid_2: {count2} de 10</span>
+                    <span className="tag" style={{color:'var(--blue)',borderColor:'var(--blue)'}}>Plaid_2: {count2} de 10</span>
                   </>
                 );
               })()}
@@ -3422,7 +3422,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
                     <div className="ledger-desc" style={{cursor:'pointer'}} onClick={()=>{setEditingCardId(c.id);setEditingCardName(c.name);}}>{c.name}</div>
                     {isConnected && (
-                      <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--green)',color:'#fff',flexShrink:0}}>PLAID_{conn.plaid_account||1}</span>
+                      <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:conn.plaid_account===2?'var(--blue)':'var(--green)',color:'#fff',flexShrink:0}}>PLAID_{conn.plaid_account||1}</span>
                     )}
                     {hasError && (
                       <span style={{fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--amber)',color:'#fff',flexShrink:0}}>⚠️ RECONECTAR</span>
