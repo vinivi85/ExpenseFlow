@@ -3386,11 +3386,21 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
 
       {embedded && client && (
         <div className="card">
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:6}}>
             <div style={{fontWeight:700,fontSize:14}}>Cartões / Fontes</div>
-            {Object.values(plaidConns).filter(c=>c.status==='connected').length>0 && (
-              <span className="tag">{Object.values(plaidConns).filter(c=>c.status==='connected').length} de 10 conectadas (Plaid)</span>
-            )}
+            <div style={{display:'flex',gap:6}}>
+              {(()=>{
+                const connectedList = Object.values(plaidConns).filter(c=>c.status==='connected');
+                const count1 = connectedList.filter(c=>(c.plaid_account||1)===1).length;
+                const count2 = connectedList.filter(c=>c.plaid_account===2).length;
+                return (
+                  <>
+                    <span className="tag">Plaid_1: {count1} de 10</span>
+                    <span className="tag">Plaid_2: {count2} de 10</span>
+                  </>
+                );
+              })()}
+            </div>
           </div>
           {(cards||[]).length===0 && <p className="muted">Nenhum cartão cadastrado ainda. Adicione abaixo, ou cadastre direto na hora de lançar/importar um gasto.</p>}
           {(cards||[]).map(c=>{
