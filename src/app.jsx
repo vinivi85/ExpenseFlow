@@ -1864,7 +1864,19 @@ ${pdfText.slice(0, 30000)}`;
     setExtracting(false);
     if(succeededFiles.length>0) markFilesImported(succeededFiles);
     if(allItems.length===0){ showToast('Nenhuma transação encontrada'); return; }
-    setReviewing(markPossibleDuplicates(markDuplicates(allItems, expenses), expenses, card));
+
+    // A lista de despesas na memória do app só tem as 500 mais recentes — se o
+    // que está sendo importado for de um mês mais antigo (ou já tiver bastante
+    // coisa lançada desde então), a duplicata podia passar batido. Busca direto
+    // no banco, na faixa de data exata do que está sendo importado, sem esse limite.
+    const itemDates = allItems.map(it=>it.date).filter(Boolean).sort();
+    let existingForCheck = expenses;
+    if(client && itemDates.length>0){
+      const {data} = await client.from('expenses').select('date,description,amount,card')
+        .gte('date', itemDates[0]).lte('date', itemDates[itemDates.length-1]);
+      if(data) existingForCheck = data;
+    }
+    setReviewing(markPossibleDuplicates(markDuplicates(allItems, existingForCheck), existingForCheck, card));
   }
 
   async function confirmSave(){
