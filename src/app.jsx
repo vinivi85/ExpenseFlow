@@ -2844,6 +2844,8 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
   const [disconnectingId,setDisconnectingId] = useState(null);
   const [assignDrafts,setAssignDrafts] = useState({}); // connection_id -> {mode:'existing'|'new', cardId, newName}
   const [assigning,setAssigning] = useState(false);
+  const [cancelingPendingId,setCancelingPendingId] = useState(null);
+  const [cancelingAllPending,setCancelingAllPending] = useState(false);
 
   async function loadPlaidStatus(){
     try{
@@ -2951,6 +2953,33 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
     setAssignDrafts({});
     loadPlaidStatus();
     reloadCards();
+  }
+
+  // Cancela uma conta pendente específica — usado quando o login trouxe conta(s)
+  // demais por engano (ex: clicou "conectar" duas vezes sem querer).
+  async function cancelPendingConnection(connId){
+    setCancelingPendingId(connId);
+    const res = await fetch('/api/plaid-cancel-pending', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ connection_id: connId }) });
+    const data = await res.json();
+    setCancelingPendingId(null);
+    if(!res.ok){ showToast('Erro ao cancelar: '+(data.error||'')); return; }
+    showToast('Conta cancelada ✓');
+    const nextDrafts = {...assignDrafts}; delete nextDrafts[connId];
+    setAssignDrafts(nextDrafts);
+    loadPlaidStatus();
+  }
+
+  async function cancelAllPending(){
+    setCancelingAllPending(true);
+    let okCount = 0, errCount = 0;
+    for(const conn of plaidPending){
+      const res = await fetch('/api/plaid-cancel-pending', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ connection_id: conn.id }) });
+      if(res.ok) okCount++; else errCount++;
+    }
+    setCancelingAllPending(false);
+    showToast(okCount+' conta(s) cancelada(s)'+(errCount>0?', '+errCount+' com erro':'')+' ✓');
+    setAssignDrafts({});
+    loadPlaidStatus();
   }
 
   // Se a página recarregou de volta de um login OAuth de banco, retoma a conexão sozinho.
@@ -3273,7 +3302,12 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
             const draft = assignDrafts[conn.id] || {mode:'new',cardId:'',newName:''};
             return (
               <div key={conn.id} style={{marginBottom:14,paddingBottom:14,borderBottom:'1px dashed var(--bezel)'}}>
-                <div className="ledger-desc" style={{marginBottom:8}}>{conn.institution_name ? conn.institution_name+' — ' : ''}{conn.account_name}</div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                  <div className="ledger-desc">{conn.institution_name ? conn.institution_name+' — ' : ''}{conn.account_name}</div>
+                  <span className="link" style={{color:'var(--red)'}} onClick={()=>cancelPendingConnection(conn.id)}>
+                    {cancelingPendingId===conn.id ? <span className="spinner"></span> : 'cancelar'}
+                  </span>
+                </div>
                 <div className="row2" style={{marginBottom:8}}>
                   <button className={"btn btn-sm "+(draft.mode==='existing'?'btn-primary':'btn-ghost')} onClick={()=>setAssignDrafts({...assignDrafts,[conn.id]:{...draft,mode:'existing'}})}>Cartão existente</button>
                   <button className={"btn btn-sm "+(draft.mode==='new'?'btn-primary':'btn-ghost')} onClick={()=>setAssignDrafts({...assignDrafts,[conn.id]:{...draft,mode:'new'}})}>Criar novo</button>
@@ -3289,9 +3323,14 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
               </div>
             );
           })}
-          <button className="btn btn-primary" onClick={confirmAssignments} disabled={assigning}>
-            {assigning ? <span className="spinner"></span> : 'Confirmar associações'}
-          </button>
+          <div className="row2">
+            <button className="btn btn-ghost" style={{color:'var(--red)'}} onClick={cancelAllPending} disabled={cancelingAllPending||assigning}>
+              {cancelingAllPending ? <span className="spinner"></span> : 'Cancelar tudo'}
+            </button>
+            <button className="btn btn-primary" onClick={confirmAssignments} disabled={assigning||cancelingAllPending}>
+              {assigning ? <span className="spinner"></span> : 'Confirmar associações'}
+            </button>
+          </div>
         </div>
       )}
 
