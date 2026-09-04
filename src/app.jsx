@@ -3642,7 +3642,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
       </div>
       <div className="card">
         <div style={{fontWeight:700,marginBottom:8,fontSize:13}}>SQL para rodar no Supabase</div>
-        <textarea readOnly rows="14" style={{fontFamily:'JetBrains Mono, monospace',fontSize:11.5}} value={SQL_SCHEMA}></textarea>
+        <textarea readOnly rows="14" style={{fontFamily:'JetBrains Mono, monospace',fontSize:11.5,width:'100%',boxSizing:'border-box'}} value={SQL_SCHEMA}></textarea>
       </div>
       <p className="muted" style={{textAlign:'center',fontSize:11,marginTop:4}}>Versão: {APP_VERSION}</p>
     </div>
