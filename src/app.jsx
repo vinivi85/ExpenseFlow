@@ -1373,7 +1373,7 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
           {!selectMode && totalCount>0 && !confirmingClear && (
             <>
               <span className="link" onClick={()=>setSelectMode(true)}>Selecionar</span>
-              <span className="link" style={{color:'var(--red)'}} onClick={()=>setConfirmingClear(true)}>Limpar seleção</span>
+              <span className="link" style={{color:'var(--red)'}} onClick={()=>setConfirmingClear(true)}>Excluir seleção</span>
             </>
           )}
           {selectMode && (
@@ -2610,7 +2610,7 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
           {isConnected && (
             <span style={{position:'absolute',top:10,right:10,fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:rowConn.plaid_account===2?'var(--blue)':'var(--green)',color:'#fff'}}>PLAID_{rowConn.plaid_account||1}</span>
           )}
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:cardMinimum!=null?2:8,paddingRight:isConnected?54:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:(rowCard?.nickname||cardMinimum!=null)?2:8,paddingRight:isConnected?54:0}}>
             {row.card_id ? (
               <div className="ledger-desc">{row.description}</div>
             ) : (
@@ -2620,6 +2620,9 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
               <span className="link" style={{color:'var(--red)'}} onClick={()=>deleteBill(row)}>{row.card_id ? 'remover' : 'excluir'}</span>
             )}
           </div>
+          {rowCard?.nickname && (
+            <div className="muted" style={{fontSize:11,marginBottom:8}}>{rowCard.nickname}</div>
+          )}
           <div style={{marginBottom:8}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
               <div className="muted" style={{fontSize:11,display:'flex',alignItems:'center',gap:4}}>
