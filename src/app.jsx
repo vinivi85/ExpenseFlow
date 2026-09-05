@@ -797,7 +797,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
     return (
       <div key={c.id} style={{padding:'10px 2px',borderBottom:'1px dashed var(--bezel)'}}>
-        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:connected?2:6}}>
+        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:c.nickname?2:(connected?2:6)}}>
           <span style={{width:7,height:7,borderRadius:'50%',background:dotColor,display:'inline-block',flexShrink:0}}></span>
           <span className="ledger-desc" style={{flex:1}}>{c.name}</span>
           <select value={c.account_type||'credit'} onChange={ev=>setAccountType(c.id,ev.target.value)} style={{width:'auto',padding:'3px 6px',fontSize:10.5}}>
@@ -806,6 +806,9 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
             ))}
           </select>
         </div>
+        {c.nickname && (
+          <div className="muted" style={{fontSize:11,marginLeft:13,marginBottom:connected?4:6}}>{c.nickname}</div>
+        )}
         {connected && (
           <div style={{marginBottom:6}}>
             <span style={{display:'inline-block',fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:b.plaid_account===2?'var(--blue)':'var(--green)',color:'#fff'}}>PLAID_{b.plaid_account||1}</span>
@@ -2812,6 +2815,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
   const [confirmingTypeEditId,setConfirmingTypeEditId] = useState(null);
   const [savingTypeEdit,setSavingTypeEdit] = useState(false);
   const [editingCardId,setEditingCardId] = useState(null);
+  const [nicknameDrafts,setNicknameDrafts] = useState({});
   const [editingCardName,setEditingCardName] = useState('');
   const [busy,setBusy] = useState(false);
   const [consolidationDays,setConsolidationDays] = useState('');
@@ -3283,6 +3287,12 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
     reloadCards();
   }
 
+  async function saveNickname(id, value){
+    const {error} = await client.from('cards').update({ nickname: value.trim() || null }).eq('id',id);
+    if(error){ showToast('Erro: '+error.message); return; }
+    if(reloadCards) reloadCards();
+  }
+
   async function setCardPlaidAccount(cardId, plaidAccount){
     const {error} = await client.from('cards').update({ plaid_account: plaidAccount }).eq('id',cardId);
     if(error){ showToast('Erro: '+error.message); return; }
@@ -3471,6 +3481,13 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                     )}
                   </div>
                 )}
+                <input
+                  value={nicknameDrafts[c.id] ?? (c.nickname||'')}
+                  onChange={e=>setNicknameDrafts({...nicknameDrafts,[c.id]:e.target.value})}
+                  onBlur={e=>saveNickname(c.id, e.target.value)}
+                  placeholder="Apelido (opcional, só pra identificar melhor)"
+                  style={{width:'100%',marginBottom:6,fontSize:12}}
+                />
                 {hasError && (
                   <p className="muted" style={{fontSize:11,color:'var(--amber)',marginBottom:6}}>O login desse banco parou de responder no Plaid — precisa reconectar pra voltar a sincronizar saldo.</p>
                 )}
@@ -3724,6 +3741,7 @@ alter table cards add column if not exists minimum_payment numeric;
 alter table cards add column if not exists due_day integer;
 alter table cards add column if not exists due_month integer;
 alter table cards add column if not exists plaid_account integer default 1;
+alter table cards add column if not exists nickname text;
 
 -- Conexoes com o Plaid: guarda o access_token de cada conta bancaria conectada.
 -- RLS ativado SEM nenhuma politica = ninguem com a chave publica (anon/publishable)
