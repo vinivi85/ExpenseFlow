@@ -285,6 +285,9 @@ function friendlyErrorMessage(msg){
   if(m.includes('timeout') || m.includes('demorou')){
     return 'A IA demorou demais pra responder. Tenta de novo.';
   }
+  if(m.includes('unexpected end of json') || m.includes('unexpected token') || m.includes('json.parse')){
+    return 'A IA não conseguiu ler essa imagem direito (respondeu algo que não deu pra entender). Tenta uma foto mais nítida, ou de novo.';
+  }
   return msg;
 }
 
@@ -1858,7 +1861,7 @@ ${pdfText.slice(0, 30000)}`;
         nextFiles[idx] = {...entry, status:'done'};
         succeededFiles.push(entry.file);
       }catch(e){
-        nextFiles[idx] = {...entry, status:'error'};
+        nextFiles[idx] = {...entry, status:'error', errorMsg: friendlyErrorMessage(e.message)};
         showToast(entry.file.name+': '+friendlyErrorMessage(e.message));
       }
     }
@@ -2009,6 +2012,9 @@ ${pdfText.slice(0, 30000)}`;
                   {f.status==='done' && <span style={{color:'var(--green)'}}>processado ✓</span>}
                   {f.status==='error' && <span style={{color:'var(--red)'}}>erro ao processar</span>}
                 </div>
+                {f.status==='error' && f.errorMsg && (
+                  <div style={{fontSize:11,color:'var(--red)',marginTop:2}}>{f.errorMsg}</div>
+                )}
               </div>
               <div style={{display:'flex',gap:12}}>
                 {f.status==='error' && <span className="link" onClick={()=>{

@@ -85,7 +85,28 @@ export default async function handler(req, res) {
       res.status(422).json({ error: 'A fatura tem transações demais pra processar de uma vez. Tenta dividir o PDF em partes menores.', truncated: true });
       return;
     }
+    // Sem candidato nenhum — geralmente é conteúdo bloqueado pelo filtro de segurança
+    // do Gemini, ou algum outro motivo que faria o app tratar como "sucesso vazio"
+    // e mostrar só "Nenhuma transação encontrada" sem dizer o motivo de verdade.
+    if (!candidate) {
+      const blockReason = data.promptFeedback?.blockReason;
+      res.status(422).json({
+        error: blockReason
+          ? `O Gemini bloqueou essa imagem/arquivo (motivo: ${blockReason}). Tenta outra foto/print.`
+          : 'O Gemini não retornou nenhuma resposta pra esse arquivo. Tenta de novo ou usa outra foto/print.',
+        detail: data,
+      });
+      return;
+    }
+    if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+      res.status(422).json({ error: `O Gemini parou de processar antes de terminar (motivo: ${candidate.finishReason}). Tenta de novo.`, detail: data });
+      return;
+    }
     const text = candidate?.content?.parts?.map(p => p.text || '').join('') || '';
+    if (!text.trim()) {
+      res.status(422).json({ error: 'O Gemini respondeu vazio pra esse arquivo. Tenta de novo ou usa outra foto/print.', detail: data });
+      return;
+    }
     res.status(200).json({ content: [{ type: 'text', text }] });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Erro interno' });
