@@ -971,12 +971,21 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       <div className="section-title">Por cartão / fonte</div>
       <div className="card">
         {cardList.length===0 && <div className="empty"><span className="big">💳</span>Nenhum gasto nesse período.</div>}
-        {cardList.map(([card,val])=>(
-          <div className="cat-bar-wrap" key={card}>
-            <div className="cat-bar-top"><span>{card}</span><b>{fmtBRL(val)}</b></div>
-            <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(val/maxCard*100)+'%'}}></div></div>
-          </div>
-        ))}
+        {cardList.map(([card,val])=>{
+          const cardObj = (cards||[]).find(c=>c.name===card);
+          return (
+            <div className="cat-bar-wrap" key={card}>
+              <div className="cat-bar-top">
+                <span>
+                  {card}
+                  {cardObj?.nickname && <div className="muted" style={{fontSize:11,marginTop:1}}>{cardObj.nickname}</div>}
+                </span>
+                <b>{fmtBRL(val)}</b>
+              </div>
+              <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(val/maxCard*100)+'%'}}></div></div>
+            </div>
+          );
+        })}
       </div>
 
       {typeGroups.map(g=>(
