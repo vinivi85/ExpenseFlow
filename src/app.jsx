@@ -2067,11 +2067,20 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
   const monthLabel = capitalize(new Date(monthKey+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'}));
 
   // Vencimento recorre todo mês no mesmo dia — acha a próxima ocorrência a partir de hoje.
-  function daysUntilNextDue(dueDay){
+  function daysUntilNextDue(dueDay, dueMonth){
     if(dueDay==null) return null;
     const today = new Date(); today.setHours(0,0,0,0);
-    let candidate = new Date(today.getFullYear(), today.getMonth(), dueDay);
-    if(candidate < today) candidate = new Date(today.getFullYear(), today.getMonth()+1, dueDay);
+    let candidate;
+    if(dueMonth!=null){
+      // Usa o mês cadastrado como ponto de partida (ex: vencimento é dia 6/10) e só
+      // então recorre mês a mês a partir dali — sem isso, um vencimento de outubro
+      // podia ser confundido com "vence em setembro" só por causa do dia bater.
+      candidate = new Date(today.getFullYear(), dueMonth-1, dueDay);
+      while(candidate < today) candidate = new Date(candidate.getFullYear(), candidate.getMonth()+1, dueDay);
+    } else {
+      candidate = new Date(today.getFullYear(), today.getMonth(), dueDay);
+      if(candidate < today) candidate = new Date(today.getFullYear(), today.getMonth()+1, dueDay);
+    }
     return Math.round((candidate-today)/86400000);
   }
 
@@ -2595,7 +2604,7 @@ function PayablesTab({client,cards,categories,accountTypes,users,expenses,reload
         const belowMinimum = cardMinimum!=null && Number(row.minimum_payment||0) < Number(cardMinimum) && Number(row.minimum_payment||0) > 0;
         const effectiveDueDay = rowCard?.due_day ?? row.due_day;
         const effectiveDueMonth = rowCard?.due_month ?? row.due_month;
-        const daysToDue = effectiveDueDay!=null ? daysUntilNextDue(effectiveDueDay) : null;
+        const daysToDue = effectiveDueDay!=null ? daysUntilNextDue(effectiveDueDay, effectiveDueMonth) : null;
         const isPaid = row.is_paid===true || row.expense_id!=null;
         const hasPaidValue = row.paid_amount!=null && row.paid_amount!=='';
         const awaitingConfirmation = hasPaidValue && !row.expense_id;
