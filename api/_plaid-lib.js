@@ -226,13 +226,21 @@ async function syncAllConnections({ supabaseUrl, serviceKey }) {
   const cardById = {};
   cardRows.forEach(c => { cardById[c.id] = c.name; });
 
-  const results = [];
-  for (const item of items) {
+  // Roda a sincronização de todos os itens EM PARALELO, não um de cada vez — com
+  // 14+ conexões (duas contas Plaid somadas), fazer sequencial arriscava estourar
+  // o tempo limite da função na Vercel, o que fazia o servidor cortar a resposta
+  // no meio e o app tentar ler isso como JSON e falhar com um erro genérico do
+  // navegador (Safari mostra "The string did not match the expected pattern").
+  const results = await Promise.all(items.map(async item => {
     const connections = allConnections.filter(c => c.item_ref === item.id);
     const { clientId, secret } = plaidCredsFor(item.plaid_account);
-    const result = await syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, connections, cardById, categoryNames, defaultUser });
-    results.push({ institution: item.institution_name || 'Banco', ...result });
-  }
+    try {
+      const result = await syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, connections, cardById, categoryNames, defaultUser });
+      return { institution: item.institution_name || 'Banco', ...result };
+    } catch (e) {
+      return { institution: item.institution_name || 'Banco', error: e.message || 'Erro desconhecido' };
+    }
+  }));
   return results;
 }
 

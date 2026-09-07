@@ -274,6 +274,22 @@ function initials(name){
   return (name||'').slice(0,2).toUpperCase();
 }
 
+// Lê a resposta de um fetch com segurança — se o servidor cortar no meio (timeout
+// da função na Vercel, por exemplo) a resposta pode não ser JSON válido, e
+// "res.json()" direto falha com um erro genérico do navegador (no Safari:
+// "The string did not match the expected pattern", sem dizer o que realmente houve).
+async function safeParseJson(res){
+  const raw = await res.text();
+  try{
+    return { data: JSON.parse(raw), parseError: null };
+  }catch(e){
+    const hint = res.status===504 || res.status===502
+      ? 'O servidor demorou demais pra responder (timeout) e cortou a resposta no meio.'
+      : 'O servidor devolveu uma resposta inesperada (status '+res.status+').';
+    return { data: null, parseError: hint };
+  }
+}
+
 function friendlyErrorMessage(msg){
   const m = (msg||'').toLowerCase();
   if(m.includes('high demand') || m.includes('overloaded') || m.includes('503')){
@@ -679,8 +695,13 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
     setSyncing(true);
     try{
       const res = await fetch('/api/plaid-sync-all', { method:'POST' });
-      const data = await res.json();
+      const {data, parseError} = await safeParseJson(res);
       setSyncing(false);
+      if(parseError){
+        const msg = 'Erro ao sincronizar: '+parseError;
+        showToast(msg,6000); setSyncResult({type:'error', text:msg, at:new Date(), action:'Sincronizar tudo'});
+        return;
+      }
       if(!res.ok){
         const msg = 'Erro ao sincronizar: '+(data.error||'');
         showToast(msg); setSyncResult({type:'error', text:msg, at:new Date(), action:'Sincronizar tudo'});
@@ -3040,8 +3061,14 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ card_id: cardId })
       });
-      const data = await res.json();
+      const {data, parseError} = await safeParseJson(res);
       setSyncingCardId(null);
+      if(parseError){
+        const msg = 'Erro: '+parseError;
+        showToast('Erro ao sincronizar: '+parseError, 6000);
+        setCardSyncResult(cardId, {type:'error',text:msg,at:new Date(),action:'sincronizar'});
+        return;
+      }
       if(!res.ok){
         const msg = 'Erro: '+(data.error||'');
         showToast('Erro ao sincronizar: '+(data.error||''));
