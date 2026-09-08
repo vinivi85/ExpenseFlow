@@ -891,7 +891,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
               <span className="link" onClick={()=>startManualEdit(c)}>{hasAnyBalanceData?'editar':'+ adicionar'}</span>
               {lastUpdatedAt && (
                 <div className={isStale(lastUpdatedAt) ? undefined : "muted"} style={{fontSize:9.5,marginTop:2,color:isStale(lastUpdatedAt)?'var(--red)':undefined}}>
-                  atualizado {new Date(lastUpdatedAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}
+                  atualizado {new Date(lastUpdatedAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} às {new Date(lastUpdatedAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
                 </div>
               )}
             </div>
@@ -1003,7 +1003,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       </button>
       {syncResultMsg && (
         <p style={{fontSize:11.5,margin:'6px 0 16px',color: syncResultMsg.type==='error' ? 'var(--red)' : (syncResultMsg.type==='success' ? 'var(--green)' : 'var(--muted)')}}>
-          <b>{syncResultMsg.action||'Sincronizar'}:</b> {syncResultMsg.text} · {syncResultMsg.at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+          <b>{syncResultMsg.action||'Sincronizar'}:</b> {syncResultMsg.text} · {syncResultMsg.at.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} às {syncResultMsg.at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
         </p>
       )}
       {!syncResultMsg && <div style={{marginBottom:16}}></div>}
@@ -3603,11 +3603,17 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:5}}>
                   <span style={{width:7,height:7,borderRadius:'50%',background:isConnected?'var(--green)':(hasError?'var(--amber)':'var(--red)'),display:'inline-block',flexShrink:0}}></span>
-                  <span className="muted" style={{fontSize:11}}>{isConnected ? 'Conectado ao banco'+(conn.last_synced_at?' · sincronizado':' · nunca sincronizado') : (hasError ? 'Erro no login · precisa reconectar' : 'Desconectado')}</span>
+                  <span className="muted" style={{fontSize:11}}>
+                    {isConnected
+                      ? 'Conectado ao banco'+(conn.last_synced_at
+                          ? ' · sincronizado '+new Date(conn.last_synced_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' às '+new Date(conn.last_synced_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+                          : ' · nunca sincronizado')
+                      : (hasError ? 'Erro no login · precisa reconectar' : 'Desconectado')}
+                  </span>
                 </div>
                 {syncMsgByCard[c.id] && (
                   <p style={{fontSize:11,margin:'6px 0 0',color: syncMsgByCard[c.id].type==='error' ? 'var(--red)' : 'var(--green)'}}>
-                    <b style={{textTransform:'capitalize'}}>{syncMsgByCard[c.id].action||'ação'}:</b> {syncMsgByCard[c.id].text} · {syncMsgByCard[c.id].at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+                    <b style={{textTransform:'capitalize'}}>{syncMsgByCard[c.id].action||'ação'}:</b> {syncMsgByCard[c.id].text} · {syncMsgByCard[c.id].at.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} às {syncMsgByCard[c.id].at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
                   </p>
                 )}
               </div>
