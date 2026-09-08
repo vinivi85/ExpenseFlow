@@ -25,22 +25,25 @@ export default async function handler(req, res) {
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!process.env.PLAID_CLIENT_ID || !process.env.PLAID_SECRET || !supabaseUrl || !serviceKey) {
-    res.status(500).json({ error: 'Variáveis de ambiente do Plaid/Supabase não configuradas no servidor' });
+  if (!supabaseUrl || !serviceKey) {
+    res.status(500).json({ error: 'SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY não configurados no servidor' });
     return;
   }
 
   try {
-    const { card_id } = req.body;
-    if (!card_id) { res.status(400).json({ error: 'card_id é obrigatório' }); return; }
+    const { card_id, item_id } = req.body;
+    if (!card_id && !item_id) { res.status(400).json({ error: 'card_id ou item_id é obrigatório' }); return; }
 
-    const connRes = await supaFetch(supabaseUrl, serviceKey, `plaid_connections?card_id=eq.${card_id}&select=*`);
-    const connectionsForCard = await connRes.json();
-    if (!connectionsForCard || connectionsForCard.length === 0) {
-      res.status(404).json({ error: 'Cartão não tem conexão com o Plaid' });
-      return;
+    let itemRef = item_id;
+    if (!itemRef) {
+      const connRes = await supaFetch(supabaseUrl, serviceKey, `plaid_connections?card_id=eq.${card_id}&select=*`);
+      const connectionsForCard = await connRes.json();
+      if (!connectionsForCard || connectionsForCard.length === 0) {
+        res.status(404).json({ error: 'Cartão não tem conexão com o Plaid' });
+        return;
+      }
+      itemRef = connectionsForCard[0].item_ref;
     }
-    const itemRef = connectionsForCard[0].item_ref;
 
     const [itemRes, allConnRes, cardRes, catRes, userRes] = await Promise.all([
       supaFetch(supabaseUrl, serviceKey, `plaid_items?id=eq.${itemRef}&select=*`),
@@ -62,7 +65,7 @@ export default async function handler(req, res) {
     const result = await syncOneItem({ supabaseUrl, serviceKey, clientId, secret, item, connections, cardById, categoryNames, defaultUser });
     if (result.error) { res.status(500).json({ error: result.error }); return; }
 
-    res.status(200).json({ ok: true, imported: result.imported, pending: result.pending, balanceErrors: result.balanceErrors });
+    res.status(200).json({ ok: true, institution: item.institution_name || 'Banco', connectionCount: connections.length, imported: result.imported, pending: result.pending, balanceErrors: result.balanceErrors });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Erro interno' });
   }

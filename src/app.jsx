@@ -670,6 +670,7 @@ function App(){
 
 function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal,creditCatList,creditTotal,cards,accountTypes,client,reloadCards,reload,showToast}){
   const [syncing,setSyncing] = useState(false);
+  const [syncProgress,setSyncProgress] = useState(null); // {done, total}
   const [syncResultMsg,setSyncResultMsg] = useState(()=>loadSyncMsg('gastos_sync_msg_all'));
   const [balances,setBalances] = useState([]);
   const [editingManualId,setEditingManualId] = useState(null);
@@ -693,36 +694,62 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
   async function syncAll(){
     setSyncing(true);
+    setSyncProgress(null);
     try{
-      const res = await fetch('/api/plaid-sync-all', { method:'POST' });
-      const {data, parseError} = await safeParseJson(res);
-      setSyncing(false);
-      if(parseError){
-        const msg = 'Erro ao sincronizar: '+parseError;
+      const listRes = await fetch('/api/plaid-items-list');
+      const {data: listData, parseError: listErr} = await safeParseJson(listRes);
+      if(listErr || !listRes.ok){
+        setSyncing(false);
+        const msg = 'Erro ao sincronizar: '+(listErr || listData?.error || '');
         showToast(msg,6000); setSyncResult({type:'error', text:msg, at:new Date(), action:'Sincronizar tudo'});
         return;
       }
-      if(!res.ok){
-        const msg = 'Erro ao sincronizar: '+(data.error||'');
-        showToast(msg); setSyncResult({type:'error', text:msg, at:new Date(), action:'Sincronizar tudo'});
-        return;
-      }
-      if(data.results.length===0){
+      const items = listData.items||[];
+      if(items.length===0){
+        setSyncing(false);
         const msg = 'Nenhum cartão conectado ao Plaid ainda';
         showToast(msg); setSyncResult({type:'info', text:msg, at:new Date(), action:'Sincronizar tudo'});
         return;
       }
-      const balErrs = (data.results||[]).flatMap(r=>(r.balanceErrors||[]).map(e=>`${r.institution||'Banco'}: ${e}`));
-      const itemErrs = (data.results||[]).filter(r=>r.error).map(r=>`${r.institution||'Banco'}: ${r.error}`);
+      const totalConns = items.reduce((s,it)=>s+(it.connectionCount||0),0);
+      setSyncProgress({done:0, total:totalConns});
+      let doneConns = 0;
+
+      // Uma chamada por login, todas em paralelo — o contador avança conforme
+      // cada uma responde, dando progresso real (ex: "3 de 14 conexões").
+      const results = await Promise.all(items.map(async it=>{
+        try{
+          const res = await fetch('/api/plaid-sync', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ item_id: it.id })
+          });
+          const {data, parseError} = await safeParseJson(res);
+          doneConns += it.connectionCount||0;
+          setSyncProgress({done:doneConns, total:totalConns});
+          if(parseError) return { institution: it.institution_name||'Banco', error: parseError };
+          if(!res.ok) return { institution: it.institution_name||'Banco', error: data?.error||'Erro desconhecido' };
+          return data;
+        }catch(e){
+          doneConns += it.connectionCount||0;
+          setSyncProgress({done:doneConns, total:totalConns});
+          return { institution: it.institution_name||'Banco', error: e.message };
+        }
+      }));
+
+      setSyncing(false);
+      setSyncProgress(null);
+      const totalPending = results.reduce((s,r)=>s+(r.pending||0),0);
+      const balErrs = results.flatMap(r=>(r.balanceErrors||[]).map(e=>`${r.institution||'Banco'}: ${e}`));
+      const itemErrs = results.filter(r=>r.error).map(r=>`${r.institution||'Banco'}: ${r.error}`);
       let finalMsg, finalType;
       if(balErrs.length>0 || itemErrs.length>0){
         const parts = [];
         if(itemErrs.length>0) parts.push('erro na sincronização: '+itemErrs.join('; '));
         if(balErrs.length>0) parts.push('erro no saldo: '+balErrs.join('; '));
-        finalMsg = data.totalPending+' pendente(s) de revisão em Lançamentos, mas '+parts.join(' | ');
+        finalMsg = totalPending+' pendente(s) de revisão em Lançamentos, mas '+parts.join(' | ');
         finalType = 'error';
-      } else if(data.totalPending>0){
-        finalMsg = data.totalPending+' nova(s) despesa(s) aguardando revisão em Lançamentos ✓';
+      } else if(totalPending>0){
+        finalMsg = totalPending+' nova(s) despesa(s) aguardando revisão em Lançamentos ✓';
         finalType = 'success';
       } else {
         finalMsg = 'Nada novo pra revisar ✓';
@@ -734,6 +761,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
       loadBalances();
     }catch(e){
       setSyncing(false);
+      setSyncProgress(null);
       const msg = 'Erro ao sincronizar: '+e.message;
       showToast(msg); setSyncResult({type:'error', text:msg, at:new Date(), action:'Sincronizar tudo'});
     }
@@ -969,7 +997,9 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
   return (
     <div>
       <button className="btn btn-ghost" onClick={syncAll} disabled={syncing}>
-        {syncing ? <span className="spinner"></span> : '🔄 Sincronizar tudo (Plaid)'}
+        {syncing
+          ? (<><span className="spinner"></span> {syncProgress ? ` Sincronizando ${syncProgress.done}/${syncProgress.total} conexões` : ' Preparando…'}</>)
+          : '🔄 Sincronizar tudo (Plaid)'}
       </button>
       {syncResultMsg && (
         <p style={{fontSize:11.5,margin:'6px 0 16px',color: syncResultMsg.type==='error' ? 'var(--red)' : (syncResultMsg.type==='success' ? 'var(--green)' : 'var(--muted)')}}>
