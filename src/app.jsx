@@ -1729,8 +1729,8 @@ function AddOrImportTab({client,user,categories,users,cards,reloadCards,expenses
   return (
     <div>
       <div className="period-picker" style={{marginBottom:16}}>
-        <button className={mode==='manual'?'active':''} onClick={()=>setMode('manual')}>✍️ Manual</button>
         <button className={mode==='file'?'active':''} onClick={()=>setMode('file')}>📥 Arquivo (PDF/CSV/foto)</button>
+        <button className={mode==='manual'?'active':''} onClick={()=>setMode('manual')}>✍️ Manual</button>
       </div>
       {mode==='manual' && <AddTab client={client} user={user} categories={categories} users={users} cards={cards} reloadCards={reloadCards} reload={reload} showToast={showToast} setTab={setTab} />}
       {mode==='file' && <PdfTab client={client} user={user} categories={categories} users={users} cards={cards} reloadCards={reloadCards} expenses={expenses} reload={reload} showToast={showToast} setTab={setTab} />}
