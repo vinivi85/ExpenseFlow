@@ -222,6 +222,16 @@ function extractJson(text){
 function fmtBRL(n){
   return (n<0?'-':'') + 'R$ ' + Math.abs(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
 }
+// Colunas "timestamp" (sem fuso) no banco às vezes voltam sem indicar UTC — sem
+// isso, o navegador interpreta como se já fosse hora local, dobrando o erro de
+// fuso (ex: 20h no Texas virava "1h" na tela, porque tratava UTC como local).
+// Tudo que salvamos vem de new Date().toISOString() (sempre UTC), então isso
+// é seguro: se não tiver 'Z' nem offset (+/-HH:MM) explícito, assume UTC.
+function parseUTCTimestamp(raw){
+  if(!raw) return null;
+  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(raw);
+  return new Date(hasTz ? raw : raw+'Z');
+}
 // toISOString() sempre usa UTC — à noite (fuso atrás de UTC, como o Texas) isso já
 // mostra o dia/mês seguinte mesmo sem ter virado localmente ainda. Essas duas
 // pegam a data local de verdade, no formato YYYY-MM-DD / YYYY-MM.
@@ -816,7 +826,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
   function isStale(timestamp){
     if(!timestamp) return false;
-    const diffMs = Date.now() - new Date(timestamp).getTime();
+    const diffMs = Date.now() - parseUTCTimestamp(timestamp).getTime();
     return diffMs >= 3*24*60*60*1000;
   }
 
@@ -891,7 +901,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
               <span className="link" onClick={()=>startManualEdit(c)}>{hasAnyBalanceData?'editar':'+ adicionar'}</span>
               {lastUpdatedAt && (
                 <div className={isStale(lastUpdatedAt) ? undefined : "muted"} style={{fontSize:9.5,marginTop:2,color:isStale(lastUpdatedAt)?'var(--red)':undefined}}>
-                  atualizado {new Date(lastUpdatedAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} às {new Date(lastUpdatedAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+                  atualizado {parseUTCTimestamp(lastUpdatedAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} às {parseUTCTimestamp(lastUpdatedAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
                 </div>
               )}
             </div>
@@ -3606,7 +3616,7 @@ function ConfigScreen({cfg,onSave,embedded,categories,users,cards,accountTypes,c
                   <span className="muted" style={{fontSize:11}}>
                     {isConnected
                       ? 'Conectado ao banco'+(conn.last_synced_at
-                          ? ' · sincronizado '+new Date(conn.last_synced_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' às '+new Date(conn.last_synced_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+                          ? ' · sincronizado '+parseUTCTimestamp(conn.last_synced_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' às '+parseUTCTimestamp(conn.last_synced_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
                           : ' · nunca sincronizado')
                       : (hasError ? 'Erro no login · precisa reconectar' : 'Desconectado')}
                   </span>
@@ -3999,6 +4009,20 @@ create policy "anyone_select_closed_months" on closed_months for select using (t
 create policy "anyone_insert_closed_months" on closed_months for insert with check (true);
 create policy "anyone_delete_closed_months" on closed_months for delete using (true);
 create policy "anyone_update_closed_months" on closed_months for update using (true);
+
+-- Corrige de vez o bug de fuso horário: colunas "timestamp" (sem fuso) guardavam
+-- a hora certa em UTC mas sem marcar isso, e o navegador às vezes interpretava
+-- como se já fosse hora local (ex: 20h no Texas aparecia como "1h" na tela).
+-- Convertendo pra "timestamptz" faz o Postgres guardar e devolver com fuso
+-- explícito — os dados existentes eram UTC mesmo, então a conversão abaixo só
+-- deixa isso marcado corretamente, sem mudar o horário real de nada.
+alter table cards alter column manual_balance_updated_at type timestamptz using manual_balance_updated_at at time zone 'UTC';
+alter table plaid_connections alter column last_synced_at type timestamptz using last_synced_at at time zone 'UTC';
+alter table plaid_connections alter column balance_updated_at type timestamptz using balance_updated_at at time zone 'UTC';
+alter table plaid_connections alter column created_at type timestamptz using created_at at time zone 'UTC';
+alter table plaid_items alter column last_synced_at type timestamptz using last_synced_at at time zone 'UTC';
+alter table plaid_items alter column created_at type timestamptz using created_at at time zone 'UTC';
+alter table closed_months alter column closed_at type timestamptz using closed_at at time zone 'UTC';
 `;
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
