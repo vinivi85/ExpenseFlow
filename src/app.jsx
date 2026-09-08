@@ -1725,7 +1725,7 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
 // Junta lançamento manual e importação de arquivo numa aba só, já que os dois
 // fazem a mesma coisa no fundo (adicionar despesa) — só muda a origem do dado.
 function AddOrImportTab({client,user,categories,users,cards,reloadCards,expenses,reload,showToast,setTab}){
-  const [mode,setMode] = useState('manual');
+  const [mode,setMode] = useState('file');
   return (
     <div>
       <div className="period-picker" style={{marginBottom:16}}>
