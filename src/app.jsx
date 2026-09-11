@@ -859,7 +859,7 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
 
     return (
       <div key={c.id} style={{padding:'10px 2px',borderBottom:'1px dashed var(--bezel)'}}>
-        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:c.nickname?2:(connected?2:6)}}>
+        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
           <span style={{width:7,height:7,borderRadius:'50%',background:dotColor,display:'inline-block',flexShrink:0}}></span>
           <span className="ledger-desc" style={{flex:1}}>{c.name}</span>
           <select value={c.account_type||'credit'} onChange={ev=>setAccountType(c.id,ev.target.value)} style={{width:'auto',padding:'3px 6px',fontSize:10.5}}>
@@ -869,11 +869,15 @@ function Dashboard({catList,maxCat,cardList,maxCard,descList,maxDesc,periodTotal
           </select>
         </div>
         {c.nickname && (
-          <div className="muted" style={{fontSize:11,marginLeft:13,marginBottom:connected?4:6}}>{c.nickname}</div>
+          <div className="muted" style={{fontSize:11,marginLeft:13,marginBottom:4}}>{c.nickname}</div>
         )}
-        {connected && (
+        {connected ? (
           <div style={{marginBottom:6}}>
             <span style={{display:'inline-block',fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:b.plaid_account===2?'var(--blue)':'var(--green)',color:'#fff'}}>PLAID_{b.plaid_account||1}</span>
+          </div>
+        ) : (
+          <div style={{marginBottom:6}}>
+            <span style={{display:'inline-block',fontSize:9.5,fontWeight:800,letterSpacing:'0.03em',padding:'2px 8px',borderRadius:20,background:'var(--red)',color:'#fff',opacity:0.45}}>PLAID</span>
           </div>
         )}
 
