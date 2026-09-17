@@ -1698,7 +1698,10 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
       )}
       {categoryBreakdown && categoryBreakdown.length>0 && (
         <>
-          <div className="section-title" style={{marginTop:20}}>Resumo por categoria — {cardFilter}</div>
+          <div className="section-title" style={{marginTop:20}}>
+            Resumo por categoria — {cardFilter}
+            {(()=>{ const co=(cards||[]).find(c=>c.name===cardFilter); return co?.nickname ? ' ('+co.nickname+')' : ''; })()}
+          </div>
           <div className="card">
             {categoryBreakdown.map(([cat,val])=>(
               <div className="cat-bar-wrap" key={cat}>
@@ -1716,12 +1719,21 @@ function ListTab({expenses,totalCount,periodLabel,dateMatchesPeriod,loading,clie
         <>
           <div className="section-title" style={{marginTop:20}}>Resumo por cartão/fonte — {categoryFilter}</div>
           <div className="card">
-            {cardBreakdown.map(([card,val])=>(
-              <div className="cat-bar-wrap" key={card}>
-                <div className="cat-bar-top"><span>{card}</span><b>{fmtBRL(val)}</b></div>
-                <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(val/cardBreakdownMax*100)+'%'}}></div></div>
-              </div>
-            ))}
+            {cardBreakdown.map(([card,val])=>{
+              const cardObj = (cards||[]).find(c=>c.name===card);
+              return (
+                <div className="cat-bar-wrap" key={card}>
+                  <div className="cat-bar-top">
+                    <span>
+                      {card}
+                      {cardObj?.nickname && <div className="muted" style={{fontSize:11,marginTop:1}}>{cardObj.nickname}</div>}
+                    </span>
+                    <b>{fmtBRL(val)}</b>
+                  </div>
+                  <div className="cat-bar-track"><div className="cat-bar-fill" style={{width:(val/cardBreakdownMax*100)+'%'}}></div></div>
+                </div>
+              );
+            })}
             <div style={{display:'flex',justifyContent:'space-between',fontSize:12,paddingTop:10,marginTop:4,borderTop:'1px dashed var(--bezel)'}}>
               <span className="muted">Total</span><b style={{fontFamily:'JetBrains Mono, monospace'}}>{fmtBRL(cardBreakdownTotal)}</b>
             </div>
