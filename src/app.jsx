@@ -246,28 +246,50 @@ function todayLocalMonthKey(){
 // Agrupa despesas por descrição, juntando nomes parecidos quando um é prefixo do
 // outro palavra-por-palavra (ex: "Walmart" e "Walmart Supercenter" viram um grupo
 // só) — evita falso positivo tipo "gas" batendo com "vegas" (compara por palavra
-// inteira, não por substring solta).
+// inteira, não por substring solta). Antes de comparar, tira palavras de "ruído"
+// comuns em memo de transferência bancária (Zelle, payment, to, códigos de
+// confirmação, número de conta mascarado) — sem isso, "ZELLE TO Fulano REF #
+// ABC123" e "Zelle payment to Fulano Conf# XYZ789" nunca batiam, mesmo sendo o
+// mesmo fornecedor.
+const TRANSFER_NOISE_WORDS = new Set(['zelle','venmo','paypal','to','payment','online','des','id','indn','co','web','conf','ref','from','via','the','a','of','inc','llc','card']);
+function isNoiseToken(w){
+  if(!w) return true;
+  if(TRANSFER_NOISE_WORDS.has(w)) return true;
+  if(/^\d{1,2}\/\d{1,2}(\/\d{2,4})?$/.test(w)) return true; // datas tipo 09/11
+  if(/^x+\d*$/.test(w)) return true; // XXXXXXXXXX86354, número mascarado
+  if(/^\d{4,}$/.test(w)) return true; // número puro longo (conta, confirmação)
+  if(w.length>=6 && /[a-z]/.test(w) && /\d/.test(w)) return true; // código tipo wfct22mwfc7j, is8bdjn23
+  return false;
+}
+function coreWordsOf(desc){
+  return desc.trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').split(/\s+/).filter(w=>w && !isNoiseToken(w));
+}
 function groupByFuzzyDescription(items){
   const wordsOf = s => s.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const isWordPrefixMatch = (a,b) => {
-    const wa = wordsOf(a), wb = wordsOf(b);
+  // Memo de banco às vezes trunca a mesma palavra de jeitos diferentes (ex:
+  // "CONSTR" vs "CONSTRUCTIO"). Considera bater se uma palavra é prefixo da
+  // outra (mínimo 4 letras, pra não confundir palavra curta de verdade).
+  const wordMatches = (w1,w2) => w1===w2 || (w1.length>=4 && w2.length>=4 && (w1.startsWith(w2)||w2.startsWith(w1)));
+  const isWordPrefixMatch = (wa,wb) => {
     const [shorter,longer] = wa.length<=wb.length ? [wa,wb] : [wb,wa];
     if(shorter.length===0) return false;
-    return shorter.every((w,i)=>longer[i]===w);
+    return shorter.every((w,i)=>wordMatches(w,longer[i]));
   };
-  const groups = []; // {label, total, count}
+  const groups = []; // {label, coreWords, total, count}
   items.forEach(item=>{
     const desc = (item.description||'Sem descrição').trim();
-    let g = groups.find(g=>isWordPrefixMatch(g.label, desc));
+    const core = coreWordsOf(desc);
+    const compareWords = core.length>0 ? core : wordsOf(desc); // sem núcleo (só ruído) — cai pro nome cru
+    let g = groups.find(g=>isWordPrefixMatch(g.compareWords, compareWords));
     if(g){
       g.total += Number(item.amount);
       g.count += 1;
-      if(desc.length < g.label.length) g.label = desc; // fica com o nome mais curto/genérico
+      if(desc.length < g.label.length){ g.label = desc; g.compareWords = compareWords; }
     } else {
-      groups.push({ label: desc, total: Number(item.amount), count: 1 });
+      groups.push({ label: desc, compareWords, total: Number(item.amount), count: 1 });
     }
   });
-  return groups.sort((a,b)=>b.total-a.total);
+  return groups.map(({label,total,count})=>({label,total,count})).sort((a,b)=>b.total-a.total);
 }
 // Formata um campo numérico pra sempre ter duas casas decimais (0.00) — usado no
 // blur dos campos de valor, pra não interferir na digitação em si.
