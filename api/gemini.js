@@ -45,33 +45,44 @@ export default async function handler(req, res) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 90000);
 
-    let upstream;
-    try {
-      upstream = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts }],
-            generationConfig: json
-              ? { maxOutputTokens: 32768, responseMimeType: 'application/json' }
-              : { maxOutputTokens: 8192 },
-          }),
-          signal: controller.signal,
+    // O Gemini às vezes devolve 503 (modelo sobrecarregado) por instabilidade
+    // passageira — tenta de novo sozinho (com espera crescente) antes de desistir,
+    // em vez de fazer a pessoa clicar "tentar de novo" na mão várias vezes.
+    let upstream, data;
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        upstream = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts }],
+              generationConfig: json
+                ? { maxOutputTokens: 32768, responseMimeType: 'application/json' }
+                : { maxOutputTokens: 8192 },
+            }),
+            signal: controller.signal,
+          }
+        );
+      } catch (fetchErr) {
+        clearTimeout(timeout);
+        if (fetchErr.name === 'AbortError') {
+          res.status(504).json({ error: 'O Gemini demorou demais pra responder (mais de 90s). Tenta um PDF menor ou de novo.' });
+          return;
         }
-      );
-    } catch (fetchErr) {
-      clearTimeout(timeout);
-      if (fetchErr.name === 'AbortError') {
-        res.status(504).json({ error: 'O Gemini demorou demais pra responder (mais de 90s). Tenta um PDF menor ou de novo.' });
-        return;
+        throw fetchErr;
       }
-      throw fetchErr;
+
+      if (upstream.status === 503 && attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, attempt * 2500)); // 2.5s, depois 5s
+        continue;
+      }
+      data = await upstream.json();
+      break;
     }
     clearTimeout(timeout);
-
-    const data = await upstream.json();
 
     if (!upstream.ok) {
       res.status(upstream.status).json({ error: data.error?.message || 'Erro na API do Gemini', detail: data });
